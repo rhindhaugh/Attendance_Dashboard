@@ -1,0 +1,619 @@
+== START OF PROJECT CODEBASE DUMP ==
+Project root: /Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard
+
+== DIRECTORY STRUCTURE (FILTERED) ==
+- ./
+  - README.md
+  - code_writer.py
+  - full_codebase.txt
+  - main.py
+  - requirements.txt
+  - system_prompt.md
+- ./tests/
+  - test_data_cleaning.py
+- ./data/
+  - ./data/processed/
+    - combined_data.csv
+  - ./data/raw/
+    - employee_info.csv
+    - key_card_access.csv
+- ./notebooks/
+- ./src/
+  - dashboard.py
+  - data_analysis.py
+  - data_cleaning.py
+  - data_ingestion.py
+  - data_visualization.py
+
+== FILE CONTENTS (FILTERED) ==
+
+==== START OF FILE: README.md ====
+# Attendance Dashboard
+
+## Description
+This project provides an attendance dashboard for monitoring employee access.
+
+## Installation
+Installation instructions here.
+
+## Usage
+Usage instructions here.
+
+==== END OF FILE: README.md ====
+
+==== START OF FILE: code_writer.py ====
+#!/usr/bin/env python3
+"""
+code_writer.py
+
+Place this script in the root of your project. When run, it will generate a file
+called 'full_codebase.txt' in the same folder. The output file contains:
+
+1. A directory structure (folder/file hierarchy) for your code/data (excluding
+   generic/system folders like .git, venv, node_modules, etc.).
+2. The contents of each relevant file, prefaced by its path.
+   - By default, we include .py, .csv, .txt, .md, .json, .yaml, .yml.
+   - We skip other file types (feel free to adjust).
+3. For CSV files, only the first 50 lines are included.
+4. The result is a single text file you can upload to an LLM for context.
+
+Usage:
+    python code_writer.py
+"""
+
+import os
+
+OUTPUT_FILENAME = "full_codebase.txt"
+MAX_CSV_LINES = 50
+
+# Directories to skip
+EXCLUDED_DIRS = {
+    ".git",
+    "venv",
+    "__pycache__",
+    "node_modules",
+    ".idea",
+    ".vscode",
+    ".cache"
+}
+
+# File extensions we want to include
+ALLOWED_EXTENSIONS = {
+    ".py",
+    ".csv",
+    ".txt",
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml"
+}
+
+def main():
+    project_root = os.path.abspath(".")
+    with open(OUTPUT_FILENAME, "w", encoding="utf-8") as out_file:
+        out_file.write("== START OF PROJECT CODEBASE DUMP ==\n")
+        out_file.write(f"Project root: {project_root}\n\n")
+
+        # 1) Write directory structure
+        out_file.write("== DIRECTORY STRUCTURE (FILTERED) ==\n")
+        for root, dirs, files in os.walk(project_root):
+            # Filter out excluded directories
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+
+            # Calculate indentation based on depth
+            rel_path = os.path.relpath(root, project_root)
+            level = rel_path.count(os.sep)
+            indent = "  " * level
+            short_root = "." if rel_path == "." else f".{os.sep}{rel_path}"
+            out_file.write(f"{indent}- {short_root}/\n")
+
+            # Filter files by allowed extensions
+            for f in sorted(files):
+                ext = os.path.splitext(f)[1].lower()
+                if ext in ALLOWED_EXTENSIONS:
+                    sub_indent = "  " * (level + 1)
+                    out_file.write(f"{sub_indent}- {f}\n")
+
+        out_file.write("\n== FILE CONTENTS (FILTERED) ==\n")
+
+        # 2) Write the contents of each allowed file
+        for root, dirs, files in os.walk(project_root):
+            # Filter out excluded directories
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+
+            for filename in sorted(files):
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in ALLOWED_EXTENSIONS:
+                    continue  # Skip non-allowed file extensions
+
+                file_path = os.path.join(root, filename)
+                # Skip the output file itself
+                if os.path.abspath(file_path) == os.path.abspath(os.path.join(project_root, OUTPUT_FILENAME)):
+                    continue
+
+                # Prepare relative path for display
+                relative_path = os.path.relpath(file_path, project_root)
+
+                out_file.write(f"\n==== START OF FILE: {relative_path} ====\n")
+
+                # If it's a CSV, only read first 50 lines
+                if ext == ".csv":
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            for i, line in enumerate(f):
+                                if i >= MAX_CSV_LINES:
+                                    out_file.write("... [Truncated after 50 lines]\n")
+                                    break
+                                out_file.write(line)
+                    except Exception as e:
+                        out_file.write(f"[Error reading CSV: {e}]\n")
+
+                else:
+                    # For allowed non-CSV files, read everything
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            contents = f.read()
+                            out_file.write(contents)
+                    except Exception as e:
+                        out_file.write(f"[Error reading file: {e}]\n")
+
+                out_file.write(f"\n==== END OF FILE: {relative_path} ====\n")
+
+        out_file.write("\n== END OF PROJECT CODEBASE DUMP ==\n")
+
+if __name__ == "__main__":
+    main()
+
+==== END OF FILE: code_writer.py ====
+
+==== START OF FILE: main.py ====
+from src.data_ingestion import load_key_card_data, load_employee_info
+from src.data_cleaning import (
+    clean_key_card_data,
+    clean_employee_info,
+    merge_key_card_with_employee_info,
+    add_time_analysis_columns
+)
+
+def main():
+    """
+    This function will:
+    1. Load the key card data from data/raw/key_card_access.csv
+    2. Load the employee info data from data/raw/employee_info.csv
+    3. Clean both datasets
+    4. Add time analysis columns
+    5. Merge them
+    6. Print a summary of the results
+    7. Write out the combined data
+    """
+
+    # STEP 1: Load data
+    key_card_df = load_key_card_data("data/raw/key_card_access.csv")
+    print("Key card dataframe columns:", key_card_df.columns.tolist())
+    print("\nFirst few rows of raw key card data:")
+    print(key_card_df.head())
+
+    employee_df = load_employee_info("data/raw/employee_info.csv")
+    print("\nEmployee info columns:", employee_df.columns.tolist())
+    print("\nFirst few rows of raw employee data:")
+    print(employee_df.head())
+
+    # STEP 2: Clean data
+    key_card_df = clean_key_card_data(key_card_df)
+    employee_df = clean_employee_info(employee_df)
+
+    # STEP 3: Add time analysis columns
+    key_card_df = add_time_analysis_columns(key_card_df)
+
+    # STEP 4: Merge data
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+
+    # STEP 5: Print shapes / head of data
+    print("\nKey card (clean) shape:", key_card_df.shape)
+    print("Employee info (clean) shape:", employee_df.shape)
+    print("Combined shape:", combined_df.shape)
+
+    # Print the first few rows to confirm
+    print("\n=== COMBINED DF (head) ===")
+    print(combined_df.head())
+
+    # STEP 6: Save the combined data
+    combined_df.to_parquet("data/processed/combined_data.parquet", index=False)
+    # Also save as CSV for easier viewing if needed
+    combined_df.to_csv("data/processed/combined_data.csv", index=False)
+
+if __name__ == "__main__":
+    main()
+
+==== END OF FILE: main.py ====
+
+==== START OF FILE: requirements.txt ====
+pandas==2.0.0
+numpy==1.24.0
+jupyter==1.0.0
+plotly==5.13.0
+streamlit==1.20.0
+pytest==7.3.1
+
+==== END OF FILE: requirements.txt ====
+
+==== START OF FILE: system_prompt.md ====
+
+==== END OF FILE: system_prompt.md ====
+
+==== START OF FILE: tests/test_data_cleaning.py ====
+# test_data_cleaning.py
+# Add your code here
+
+==== END OF FILE: tests/test_data_cleaning.py ====
+
+==== START OF FILE: data/processed/combined_data.csv ====
+timestamp,User,Details,Event,Department_x,Where,employee_id,date_only,day_of_week,time_only,earliest_scan_time,"Last name, First name",Status,Gender,College/Institution,Hire Date,Original Hire Date,Resignation Date,Working Status,Level,Employment Status: Date,Employment Status,FTE,Termination Type,Termination Reason,Eligible For Re-hire,Regrettable or Non-Regrettable,Employment status comments,Compensation: Date,Pay Schedule,Pay type,Pay rate,Pay rate - Currency code,Paid per,Overtime Status,Overtime Rate,Job Information: Date,Location,Division,Department_y,Job Title,Reporting to,Entity,Sick Leave Time taken (YTD),Sick Leave Time accrued,Compassionate Leave Time accrued,Bereavement Leave Time accrued,Parental Leave Time accrued,Parental Leave Time taken (YTD),Learning and Development Time taken (YTD),Bereavement Leave Time taken (YTD),Compassionate Leave Time taken (YTD),Days in Lieu Time taken (YTD),Work from Home Time taken (YTD),SSP Sick Leave Time taken (YTD),Unpaid Sick Leave Time taken (YTD),OT - Intermediate Rate (Ops) Time taken (YTD)
+2024-08-07 17:34:23,"362 Whitehead, Tom",,Access permitted - token only,BambooHR,5th Floor RH Side Entrance  (In),362,2024-08-07,Wednesday,17:34:23,17:34:23,"Whitehead, Tom",Active,Male,,20/09/2022,,,Hybrid,,20/09/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/01/2025,London UK,Credit and Data,Credit & Collections,Senior Analyst,Calum Thompson,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:35:39,"364 Keijzer, Tom",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),364,2024-08-07,Wednesday,17:35:39,17:35:39,"Keijzer, Tom",Active,Male,,04/10/2022,,,Hybrid,,04/10/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,12/12/2024,London UK,Credit and Data,Cards US,Senior Analyst,Mark Rosel,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:35:49,"288 Snell, John",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),288,2024-08-07,Wednesday,17:35:49,17:35:49,"Snell, John",Inactive,Male,,01/03/2022,,,Hybrid,,21/01/2025,Terminated,,Termination (Involuntary),Gross Misconduct,No,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,31/05/2024,London UK,Finance,Finance,Senior Accountant,Tiffany Victoria,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:35:57,"610 Ike, Chinyere",,Access permitted - token only,BambooHR,Office Entrance West (In),610,2024-08-07,Wednesday,17:35:57,17:35:57,"Ike, Chinyere",Active,Female,,15/11/2023,,,Hybrid,,03/06/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,15/11/2023,London UK,Operations,Complaints,Complaints Officer,Tom Earley,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:38:39,"261 Claudet, Christopher",,Access permitted - token only,BambooHR,Lift Lobby North (In),261,2024-08-07,Wednesday,17:38:39,17:38:39,"Claudet, Christopher",Active,Male,,11/01/2022,,,Remote,,11/01/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,London UK,Product,SuperApp,Senior Product Designer,Giulia Fabritius,Lendable UK,6.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:40:14,"757 Amicone, Floriana",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),757,2024-08-07,Wednesday,17:40:14,17:40:14,"Amicone, Floriana",Active,Female,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,London UK,Credit and Data,Data Science,Data Scientist,Oliver Cairns,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:40:19,"397 Gordon, Richard",,Access permitted - token only,BambooHR,5th Floor RH Side Entrance  (In),397,2024-08-07,Wednesday,17:40:19,17:40:19,"Gordon, Richard",Active,Male,,14/02/2023,,,Hybrid,,14/02/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/09/2024,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards & Loans,Christian Porter,Lendable UK,0.38,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0
+2024-08-07 17:40:20,"310 Davies, Thomas",,Access permitted - token only,BambooHR,Lift Lobby North (In),310,2024-08-07,Wednesday,17:40:20,17:40:20,"Davies, Thomas",Active,Male,,24/05/2022,,,Hybrid,,24/05/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,London UK,Product,SuperApp,Senior Product Manager,Giulia Fabritius,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:40:55,"304 Fielding, Adam",,Access permitted - token only,BambooHR,Lift Lobby North (In),304,2024-08-07,Wednesday,17:40:55,17:40:55,"Fielding, Adam",Active,Male,,17/05/2022,,,Hybrid,IC3,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/01/2025,London UK,Engineering,SuperApp,Senior Software Engineer,Nick Hannaway,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:41:08,"677 Pratapa, Vamsi",,Access permitted - token only,BambooHR,Lift Lobby North (In),677,2024-08-07,Wednesday,17:41:08,17:41:08,"Pratapa, Vamsi",Active,Male,,12/03/2024,,,Hybrid,,12/03/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,12/03/2024,London UK,Credit and Data,Operations Analytics,Graduate Analyst,Aakash Arora,Lendable UK,2.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:42:23,"362 Whitehead, Tom",,Access permitted - token only,BambooHR,Lift Lobby South (In),362,2024-08-07,Wednesday,17:42:23,17:34:23,"Whitehead, Tom",Active,Male,,20/09/2022,,,Hybrid,,20/09/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/01/2025,London UK,Credit and Data,Credit & Collections,Senior Analyst,Calum Thompson,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:42:48,"745 Leung, Joshua",,Access permitted - token only,BambooHR,Lift Lobby South (In),745,2024-08-07,Wednesday,17:42:48,17:42:48,"Leung, Joshua",Active,Male,,25/06/2024,,,Hybrid,IC3,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,London UK,Engineering,Cards UK,Senior React Native Engineer,Phillip Brown,Lendable UK,1.5,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:43:31,"195 Thompson, Calum",,Access permitted - token only,BambooHR,5th Floor LH Side Entrance  (In),195,2024-08-07,Wednesday,17:43:31,17:43:31,"Thompson, Calum",Active,Male,,14/06/2021,,,Hybrid,,14/06/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,27/07/2023,London UK,Credit and Data,Credit & Collections,"Credit Risk Manager, Cards",Charles Denby,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:43:52,"790 Chippendale, Julie",,Access permitted - token only,BambooHR,2nd Floor South RH Side (In),790,2024-08-07,Wednesday,17:43:52,17:43:52,"Chippendale, Julie",Active,Female,,30/07/2024,,,Hybrid,,30/07/2024,Short-term Contractor,,,,,,,30/07/2024,,Salary,0.01,GBP,Month,Exempt,,22/11/2024,London UK,Operations,Collections Strategy,Collections and Recoveries Consultant,Darren Carlile,Lendable UK,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:44:15,"736 Jameson, Dominnic",,Access permitted - token only,BambooHR,2nd Floor South RH Side (In),736,2024-08-07,Wednesday,17:44:15,17:44:15,"Jameson, Dominic",Active,Male,,18/06/2024,,,Hybrid,,18/06/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,18/06/2024,London UK,Capital Markets,Capital Markets,COO - Lendable Capital,Rory McHugh,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:44:21,"151 Markland, Hugo",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),151,2024-08-07,Wednesday,17:44:21,17:44:21,"Markland, Hugo",Inactive,Male,,09/12/2019,,,Hybrid,,23/10/2024,Terminated,,Resignation (Voluntary),Career change,Yes,Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,25/09/2024,London UK,Capital Markets,Capital Markets,Director Capital Markets,Rory McHugh,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:46:06,"365 Barratt-Johnson, Oliver",,Access permitted - token only,BambooHR,5th Floor RH Side Entrance  (In),365,2024-08-07,Wednesday,17:46:06,17:46:06,"Barratt-Johnson, Oliver",Inactive,Male,,04/10/2022,,19/12/2024,Hybrid,,28/01/2025,Terminated,,Resignation (Voluntary),Career Progression,Yes,Regrettable,Leaving for a different role at Wise.. ,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,02/09/2024,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Calum Thompson,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:48:27,"259 Ushanov, Mingiyan",,Access permitted - token only,BambooHR,5th Floor RH Side Entrance  (In),259,2024-08-07,Wednesday,17:48:27,17:48:27,"Ushanov, Mingiyan",Active,Male,,04/01/2022,,,Hybrid,,04/01/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,30/08/2023,London UK,Growth,Growth,Senior Growth Analyst,Christopher Meurice,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:48:30,"264 Anselmetti, Pietro",,Access permitted - token only,BambooHR,5th Floor LH Side Entrance  (In),264,2024-08-07,Wednesday,17:48:30,17:48:30,"Anselmetti, Pietro",Active,Male,,18/01/2022,,,Hybrid,,18/01/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/07/2023,London UK,Growth,Growth,Senior UK Partnership Manager,Christopher Meurice,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:50:09,"317 Soufla, Eirini",,Access permitted - token only,BambooHR,Lift Lobby South (In),317,2024-08-07,Wednesday,17:50:09,17:50:09,"Soufla, Eirini",Active,Female,,14/06/2022,,,Hybrid,,14/06/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,03/10/2023,London UK,Operations,Customer Operations UK,Customer Operations Team Lead - Zable,Krishna Bhura,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:50:18,"343 Wong, Christine",,Access permitted - token only,BambooHR,Lift Lobby South (In),343,2024-08-07,Wednesday,17:50:18,17:50:18,"Wong, Christine",Active,Female,,23/08/2022,,,Hybrid,,23/08/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,20/03/2023,London UK,Operations,Collections (Ops) UK,Specialist Operations Agent,Steff Passon,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0
+2024-08-07 17:52:12,"259 Ushanov, Mingiyan",,Access permitted - token only,BambooHR,5th Floor RH Side Entrance  (In),259,2024-08-07,Wednesday,17:52:12,17:48:27,"Ushanov, Mingiyan",Active,Male,,04/01/2022,,,Hybrid,,04/01/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,30/08/2023,London UK,Growth,Growth,Senior Growth Analyst,Christopher Meurice,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:52:55,"515 Chan, Martin",,Access permitted - token only,BambooHR,2nd Floor South RH Side (In),515,2024-08-07,Wednesday,17:52:55,17:52:55,"Chan, Martin",Active,Male,,15/08/2023,,,Hybrid,,15/08/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,15/08/2023,London UK,CEO Office,CEO Office,VP Strategy & Corporate Development,Martin Kissinger,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:53:17,"304 Fielding, Adam",,Access permitted - token only,BambooHR,Lift Lobby South (In),304,2024-08-07,Wednesday,17:53:17,17:40:55,"Fielding, Adam",Active,Male,,17/05/2022,,,Hybrid,IC3,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/01/2025,London UK,Engineering,SuperApp,Senior Software Engineer,Nick Hannaway,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:54:32,"156 White, James",,Access permitted - token only,BambooHR,5th Floor RH Side Entrance  (In),156,2024-08-07,Wednesday,17:54:32,17:54:32,"White, James",Active,Male,,10/02/2020,,,Hybrid,,10/02/2020,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,14/06/2023,London UK,Senior Management,Cards UK,"Managing Director, Cards UK",Martin Kissinger,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:54:34,"103 Challis, Ben",,Access permitted - token only,BambooHR,Lift Lobby North (In),103,2024-08-07,Wednesday,17:54:34,17:54:34,"Challis, Ben",Active,Male,,08/06/2016,,,Hybrid,IC6,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,London UK,Engineering,Architecture,Chief Architect,James Caviness,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:56:41,"206 Price, Matthew",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),206,2024-08-07,Wednesday,17:56:41,17:56:41,"Price, Matthew",Active,Male,,19/07/2021,,,Hybrid,,19/07/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,31/05/2024,London UK,Finance,Finance,Financial Operations Manager,Adam White,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 17:58:38,"661 Murphy, David",,Access permitted - token only,BambooHR,Lift Lobby North (In),661,2024-08-07,Wednesday,17:58:38,17:58:38,"Murphy, David",Active,Male,,30/01/2024,,,Hybrid,IC4,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,London UK,Engineering,SuperApp,Tech Lead,Katherine Spice,Lendable UK,2.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:01:24,"348 Sampong, Emmanuel",,Access permitted - token only,BambooHR,Lift Lobby North (In),348,2024-08-07,Wednesday,18:01:24,18:01:24,"Sampong, Emmanuel",Active,Male,,06/09/2022,,,Hybrid,,06/09/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/03/2023,London UK,Operations,QA,QA Agent,Scott Hick,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0
+2024-08-07 18:02:03,"143 Angopa, Bernard",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),143,2024-08-07,Wednesday,18:02:03,18:02:03,"Angopa, Bernard",Active,Male,,08/07/2019,,,Hybrid,,08/07/2019,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2019,London UK,Legal,Legal,General Counsel,Rory McHugh,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:03:36,"761 Clarke-Hemmings, Andre",,Access permitted - token only,BambooHR,Office Entrance West (In),761,2024-08-07,Wednesday,18:03:36,18:03:36,"Clarke-Hemmings, Andre",Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards,Christian Porter,Lendable UK,2.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,3.0,0.0,0.0,0.0
+2024-08-07 18:04:12,"106 van Strydonck, Livia",,Access permitted - token only,BambooHR,2nd Floor South RH Side (In),106,2024-08-07,Wednesday,18:04:12,18:04:12,"van Strydonck, Livia",Active,Female,,06/02/2017,,,Hybrid,,06/02/2017,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,20/09/2022,London UK,CEO Office,CEO Office,Chief of Staff,Martin Kissinger,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:04:45,"122 Meurice, Christopher",,Access permitted - token only,BambooHR,Lift Lobby North (In),122,2024-08-07,Wednesday,18:04:45,18:04:45,"Meurice, Christopher",Active,Male,,18/09/2017,,,Hybrid,,18/09/2017,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,18/09/2017,London UK,Senior Management,Growth,Chief Marketing Officer,Martin Kissinger,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:05:43,"721 Rahman, Rashidur",,Access permitted - token only,BambooHR,Office Entrance West (In),721,2024-08-07,Wednesday,18:05:43,18:05:43,"Rahman, Rashidur",Active,Male,,04/06/2024,,,Hybrid,,04/06/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/06/2024,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards,Christian Porter,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:06:15,"686 Steele, Madeleine",,Access permitted - token only,BambooHR,Lift Lobby South (In),686,2024-08-07,Wednesday,18:06:15,18:06:15,"Steele, Madeleine",Active,Female,,09/04/2024,,24/09/2024,Hybrid,,09/04/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,London UK,Compliance - UK,Compliance - UK,Compliance Monitoring Officer,Michelle Sharpley,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:06:43,"397 Gordon, Richard",,Access permitted - token only,BambooHR,Office Entrance West (In),397,2024-08-07,Wednesday,18:06:43,17:40:19,"Gordon, Richard",Active,Male,,14/02/2023,,,Hybrid,,14/02/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/09/2024,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards & Loans,Christian Porter,Lendable UK,0.38,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0
+2024-08-07 18:06:45,"126 McGuire, Conor",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),126,2024-08-07,Wednesday,18:06:45,18:06:45,"McGuire, Conor",Active,Male,,09/07/2018,,,Hybrid,,09/07/2018,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2018,London UK,Senior Management,Compliance - UK,Head of Compliance,Martin Kissinger,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:14:46,"133 White, Adam",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),133,2024-08-07,Wednesday,18:14:46,18:14:46,"White, Adam",Active,Male,,07/01/2019,,,Hybrid,,07/01/2019,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/10/2024,London UK,Senior Management,Finance,"VP, Finance",Peter Golby,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:20:58,"365 Barratt-Johnson, Oliver",,Access permitted - token only,BambooHR,Lift Lobby North (In),365,2024-08-07,Wednesday,18:20:58,17:46:06,"Barratt-Johnson, Oliver",Inactive,Male,,04/10/2022,,19/12/2024,Hybrid,,28/01/2025,Terminated,,Resignation (Voluntary),Career Progression,Yes,Regrettable,Leaving for a different role at Wise.. ,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,02/09/2024,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Calum Thompson,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:21:47,"310 Davies, Thomas",,Access permitted - token only,BambooHR,Lift Lobby South (In),310,2024-08-07,Wednesday,18:21:47,17:40:20,"Davies, Thomas",Active,Male,,24/05/2022,,,Hybrid,,24/05/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,London UK,Product,SuperApp,Senior Product Manager,Giulia Fabritius,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:23:52,"365 Barratt-Johnson, Oliver",,Access permitted - token only,BambooHR,Lift Lobby South (In),365,2024-08-07,Wednesday,18:23:52,17:46:06,"Barratt-Johnson, Oliver",Inactive,Male,,04/10/2022,,19/12/2024,Hybrid,,28/01/2025,Terminated,,Resignation (Voluntary),Career Progression,Yes,Regrettable,Leaving for a different role at Wise.. ,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,02/09/2024,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Calum Thompson,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:26:34,"319 Prasad, Arnav",,Access permitted - token only,BambooHR,Lift Lobby North (In),319,2024-08-07,Wednesday,18:26:34,18:26:34,"Prasad, Arnav",Active,Male,,21/06/2022,,,Hybrid,,21/06/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,30/01/2025,London UK,Credit and Data,Data Science,Data Science Manager,Kristian McCaul,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:27:43,"310 Davies, Thomas",,Access permitted - token only,BambooHR,Lift Lobby North (In),310,2024-08-07,Wednesday,18:27:43,17:40:20,"Davies, Thomas",Active,Male,,24/05/2022,,,Hybrid,,24/05/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,London UK,Product,SuperApp,Senior Product Manager,Giulia Fabritius,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:32:36,"319 Prasad, Arnav",,Access permitted - token only,BambooHR,Lift Lobby North (In),319,2024-08-07,Wednesday,18:32:36,18:26:34,"Prasad, Arnav",Active,Male,,21/06/2022,,,Hybrid,,21/06/2022,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,30/01/2025,London UK,Credit and Data,Data Science,Data Science Manager,Kristian McCaul,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:42:23,"103 Challis, Ben",,Access permitted - token only,BambooHR,Lift Lobby North (In),103,2024-08-07,Wednesday,18:42:23,17:54:34,"Challis, Ben",Active,Male,,08/06/2016,,,Hybrid,IC6,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,London UK,Engineering,Architecture,Chief Architect,James Caviness,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 18:47:46,"537 Kozulin, Aleksandr",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),537,2024-08-07,Wednesday,18:47:46,18:47:46,"Kozulin, Aleksandr",Active,Male,,19/09/2023,,,Hybrid,,19/09/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,30/01/2025,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Steven Cochrane,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 19:12:48,"288 Snell, John",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),288,2024-08-07,Wednesday,19:12:48,17:35:49,"Snell, John",Inactive,Male,,01/03/2022,,,Hybrid,,21/01/2025,Terminated,,Termination (Involuntary),Gross Misconduct,No,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,31/05/2024,London UK,Finance,Finance,Senior Accountant,Tiffany Victoria,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 19:15:26,"288 Snell, John",,Access permitted - token only,BambooHR,2nd Floor South LH Side (In),288,2024-08-07,Wednesday,19:15:26,17:35:49,"Snell, John",Inactive,Male,,01/03/2022,,,Hybrid,,21/01/2025,Terminated,,Termination (Involuntary),Gross Misconduct,No,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,31/05/2024,London UK,Finance,Finance,Senior Accountant,Tiffany Victoria,Lendable UK,0.0,8.0,5.0,10.0,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2024-08-07 19:52:03,"488 de Grande, Esther",,Access permitted - token only,BambooHR,Lift Lobby South (In),488,2024-08-07,Wednesday,19:52:03,19:52:03,"de Grande, Esther",Active,Female,,27/06/2023,,,Hybrid,,27/06/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,15/10/2024,London UK,People,People Operations,People & Talent Coordinator,Charlotte Mutsaerts,Lendable UK,0.0,8.0,5.0,10.0,154.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/processed/combined_data.csv ====
+
+==== START OF FILE: data/raw/employee_info.csv ====
+﻿"Last name, First name","Employee #",Status,Gender,College/Institution,"Hire Date","Original Hire Date","Resignation Date","Working Status",Level,"Employment Status: Date","Employment Status",FTE,"Termination Type","Termination Reason","Eligible For Re-hire","Regrettable or Non-Regrettable","Employment status comments","Compensation: Date","Pay Schedule","Pay type","Pay rate","Pay rate - Currency code","Paid per","Overtime Status","Overtime Rate","Job Information: Date",Location,Division,Department,"Job Title","Reporting to",Entity,"Sick Leave Time taken (YTD)","Sick Leave Time accrued","Compassionate Leave Time accrued","Bereavement Leave Time accrued","Parental Leave Time accrued","Parental Leave Time taken (YTD)","Learning and Development Time taken (YTD)","Bereavement Leave Time taken (YTD)","Compassionate Leave Time taken (YTD)","Days in Lieu Time taken (YTD)","Work from Home Time taken (YTD)","SSP Sick Leave Time taken (YTD)","Unpaid Sick Leave Time taken (YTD)","OT - Intermediate Rate (Ops) Time taken (YTD)"
+"Abdul, Alisha",717,Inactive,Female,,28/05/2024,,,Hybrid,,20/08/2024,Terminated,,,"End of contract",,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Abidoye, Olawale",395,Inactive,Male,,07/02/2023,,,Hybrid,,03/08/2023,Terminated,,"Resignation (Voluntary)",Relocation,Yes,Regrettable,"Moving to Jamaica for a new role. 
+Resigned on 21st of July (2 weeks' notice in agreement with Krishna).",,,,,,,,,18/07/2023,"London UK",Operations,"Collections (Ops) UK","Collections Agent","Imren Iliyaz","Lendable UK",0.00,2.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Abraham, Daniel",716,Inactive,Male,,12/08/2024,28/05/2024,,Hybrid,,19/11/2024,Terminated,,"Termination (Involuntary)",Performance,No,,,30/09/2024,,Salary,0.01,GBP,Month,Exempt,,05/08/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",0.00,3.50,10.00,20.00,20.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adegboye, Joy",562,Active,Female,,17/10/2023,,,Hybrid,,17/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,17/10/2023,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",1.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adèle, Amelia",236,Active,Female,,16/11/2021,,,Hybrid,,16/11/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Financial Crime Risk Manager","Scott Andrews","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeleye, Jadesola",587,Active,Female,,07/11/2023,,,Hybrid,,07/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,3.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Ademiec, Radek",434,Active,Male,,18/04/2023,,,Remote,IC3,29/07/2024,"Long-term Contractor",,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,Poland,Engineering,"Cards US","Senior Software Engineer","Arkadiusz Kondas","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adenekan, Taiwo",462,Inactive,Female,,30/05/2023,,,Hybrid,,29/08/2024,Terminated,,"Resignation (Voluntary)",Performance,"Upon review",Non-Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,10/05/2024,"London UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Christian Porter","Lendable UK",0.00,7.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeniji, Hannah",333,Inactive,Female,,02/08/2022,,10/05/2024,Hybrid,,30/05/2024,Terminated,,"Resignation (Voluntary)",Role,"Upon review",Non-Regrettable,,,,,,,,,,10/05/2024,"London UK",Operations,"Collections (Ops) UK","Collections Agent - Loans & Auto","Christian Porter","Lendable UK",0.00,2.55,4.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adewole, Zacchaeus",428,Inactive,Male,,11/04/2023,,,Hybrid,,22/08/2023,Terminated,,"Termination (Involuntary)",Performance,No,,"Failed QA 2 months in a row + concerns about behavioral issues. Decided to end his contract. One month notice ",,,,,,,,,12/05/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Tom Earley","Lendable UK",0.00,8.00,10.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeyemi, Nicole",709,Inactive,Female,,14/05/2024,,31/07/2024,Hybrid,,31/07/2024,Terminated,,"Resignation (Voluntary)",Role,No,Non-Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Eirini Soufla","Lendable UK",0.00,2.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeyemo, Fawaz",670,Active,Male,,06/03/2024,,,Hybrid,,06/03/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,15/10/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Cards & Loans","Eirini Soufla","Lendable UK",0.63,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Adjei-Ampofo, Javan",936,Active,,,18/02/2025,,,Hybrid,,18/02/2025,Full-Time,,,,,,,,,,,,,,,18/02/2025,"Kent UK",Operations,"Customer Operations UK","Collections Agent - Loans","Christian Porter","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adjei, Chante",489,Inactive,Female,,27/06/2023,,,Hybrid,,27/09/2023,Terminated,,"Termination (Involuntary)",,,,,,,,,,,,,27/06/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","Jasmine Aminpour","Lendable UK",0.00,3.00,10.00,10.00,260.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adofo, Johnson",755,Active,Male,,26/08/2024,,,Hybrid,,26/08/2024,Full-Time,,,,,,,27/08/2024,,Salary,0.01,GBP,Month,Exempt,,30/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Kelly Smith","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Afagwu-Odunowo, HappyPrincess",640,Active,Female,,05/12/2023,,,Hybrid,,05/12/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,07/03/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Charlotte Harris","Lendable UK",0.00,8.00,5.00,8.00,154.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
+"Afodunrinbi, Yetunde",864,Active,Female,,03/12/2024,,,Hybrid,,03/12/2024,Full-Time,,,,,,,03/12/2024,,Salary,0.10,GBP,Month,Exempt,,03/12/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Agbaje, David",758,Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Charley Pratt","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
+"Agostinho Graça, Herberto",451,Inactive,Male,,22/05/2023,,,Remote,,07/03/2024,Terminated,,"Termination (Involuntary)",Performance,,,,,,,,,,,,01/01/2024,"The Netherlands",Engineering,"Central Platform","Staff Software Engineer","Phillip Brown","Lendable UK",0.00,8.00,5.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Agostinho, Lucelia",436,Inactive,Female,,18/04/2023,,,Hybrid,,13/02/2024,Terminated,,"Resignation (Voluntary)","Career Progression",Yes,,"- Wanted to find a role that had more chance of progression which she doesn't feel she has right now
+- Some challenges with QA, concerned she would not pass her probation
+",,,,,,,,,18/07/2023,"London UK",Operations,"Collections (Ops) UK","Collections Agent","Mandeep Kaur","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Agyemang-Duah, Nana",494,Inactive,Female,,18/07/2023,,02/05/2024,Hybrid,,30/05/2024,Terminated,,"Resignation (Voluntary)","Mental Health","Upon review",Regrettable,,,,,,,,,,20/11/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Eirini Soufla","Lendable UK",0.00,0.69,1.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ahmed, Faiza",731,Active,Female,,11/06/2024,,,Hybrid,,02/12/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,19/11/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ahmed, Sairah",496,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,22/12/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","George Thomas","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ahmedi, Amtul Noor",401,Inactive,Female,,28/02/2023,,,Hybrid,,28/03/2024,Terminated,,"Resignation (Voluntary)","Personal reasons",No,Non-Regrettable,"Not aligned with how the business works",,,,,,,,,07/06/2023,"London UK",Operations,Complaints,"Head of Complaints","Claire Moore","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Aileru, Lynnex",590,Active,Male,,08/11/2023,,,Hybrid,,08/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,28/10/2024,"Kent UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00
+"Akewushola, Mo",909,Active,Male,,15/01/2025,,,Hybrid,,15/01/2025,Temp,,,,,,,16/01/2025,,Salary,0.10,GBP,Month,Exempt,,15/01/2025,"London UK",Operations,"Fraud & FinCrime","Financial Crime Investigator","Alexandra Geca","Lendable UK",0.00,7.69,5.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Akhuemokhan, Esther A",895,Active,Female,,14/01/2025,,,,,14/01/2025,Temp,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata",,0.00,7.72,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Akintokunbo, Modupe",888,Active,Female,,14/01/2025,,,Hybrid,,14/01/2025,Full-Time,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Kimberley Radmore","Lendable UK",0.00,7.72,5.00,10.00,154.00,0.00,0.00,1.00,3.50,0.00,0.00,0.00,0.00,0.00
+"Alam, Rifat",672,Active,Male,,21/05/2024,,,Hybrid,IC2,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,04/02/2025,"London UK",Engineering,SuperApp,"React Native Software Engineer","Nick Hannaway","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alanna, Montana",700,Inactive,Female,,07/05/2024,,14/05/2024,Hybrid,,14/05/2024,Terminated,,"Resignation (Voluntary)",culture,No,Non-Regrettable,,,,,,,,,,07/05/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alexander, Claire",572,Inactive,,,24/10/2023,,,Hybrid,,01/11/2023,Terminated,,"Resignation (Voluntary)",Other,,,,,,,,,,,,24/10/2023,"London UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ali, Obaid",367,Inactive,Male,,04/10/2022,,,Hybrid,,29/03/2023,Terminated,,"Termination (Involuntary)",Performance,,,,,,,,,,,,10/10/2022,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Tom Earley","Lendable UK",0.00,8.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Allen, Leanne",473,Active,Female,,06/06/2023,,,Hybrid,,06/06/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,06/06/2023,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Team Lead","Daniel Medcalf","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
+"Allison, Donna",550,Active,Female,,03/10/2023,,,Hybrid,,03/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/09/2024,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Agent - Cards and Loans","Leanne Allen","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,3.00,0.00,0.00,0.00
+"Allotey, Sharon",691,Inactive,Female,,23/04/2024,,,Hybrid,,06/12/2024,Terminated,,"Termination (Involuntary)",Performance,No,,"mutual agreement",04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/04/2024,"London UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,0.00,5.00,10.00,60.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alokolaro, Elizabeth",230,Active,Female,,26/10/2021,,,Remote,,26/10/2021,"Short-term Contractor",,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Financial Crime Specialist","Amelia Adèle","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Amicone, Floriana",757,Active,Female,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"London UK","Credit and Data","Data Science","Data Scientist","Oliver Cairns","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Aminpour, Jasmine",200,Active,Female,,28/06/2021,,,Hybrid,,28/06/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Compliance Monitoring Officer","Michelle Sharpley","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Amodubello, Sinead",740,Inactive,Female,,18/06/2024,,,Hybrid,,20/08/2024,Terminated,,,"End of contract",,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Cards & Loans","Connor Delicata","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Anderson, Jake",556,Inactive,Male,,03/10/2023,,,Hybrid,,26/03/2024,Terminated,,"Resignation (Voluntary)","Personal reasons","Upon review",Non-Regrettable,,,,,,,,,,07/03/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Charlotte Harris","Lendable UK",0.00,7.00,2.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Andrade, Nzingha",495,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,"London UK",Operations,"Fraud & FinCrime","Fraud & Disputes Advisor","Garry Rayment","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00
+"Andrews, Scott",192,Active,Male,,18/05/2021,,,Hybrid,,18/05/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Director of Enterprise Risk","Conor McGuire","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Angopa, Bernard",143,Active,Male,,08/07/2019,,,Hybrid,,08/07/2019,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2019,"London UK",Legal,Legal,"General Counsel","Rory McHugh","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Anguelov, Nikolay",157,Inactive,Male,,17/02/2020,,,Hybrid,,28/02/2022,Terminated,,,Other,,,,,,,,,,,,17/02/2020,"London UK","Credit, Data and FinCrime","Collections & Internal Tools","Software Engineer","William Janse van Rensburg","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Anidugbe, Olasubomi",763,Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","George Thomas","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Anscomb, Kylie",471,Active,Female,,06/06/2023,,,Hybrid,,06/06/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,06/05/2024,"Kent UK",Operations,"Collections (Ops) UK","Senior Collections Agent - Loans & Auto","Danielle Munson","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00,0.00
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/employee_info.csv ====
+
+==== START OF FILE: data/raw/key_card_access.csv ====
+"Date/time","User","Details","Event","Department","Where"
+"24/01/2025 23:27:47","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 23:14:32","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 20:51:42","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 20:38:41","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 20:00:25","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 19:20:45","801 Purll, Laura","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 18:36:06","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 18:23:18","761 Clark Hemmings, Andre","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 18:20:00","761 Clark Hemmings, Andre","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 17:55:07","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 17:49:34","890 Capello, Giulio","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 17:43:27","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 17:41:44","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 17:38:58","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 17:38:22","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 17:33:05","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 17:20:59","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 17:10:54","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 17:02:36","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 16:48:24","143 Angopa, Bernard","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 16:44:05","701 Szigeti, Ignac","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 16:33:39","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 16:28:46","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 16:26:29","440 Khan, Shahed","","Access permitted - token only","BambooHR","2nd Floor South RH Side (In)"
+"24/01/2025 16:23:57","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 16:21:18","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 15:51:52","673 Latham, Milo","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:31:56","190 van Lennep, Harold","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:30:53","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 15:29:23","538 Hughes, Alexander","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:27:22","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:11:13","890 Capello, Giulio","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:10:04","890 Capello, Giulio","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 15:08:37","890 Capello, Giulio","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 15:03:08","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 15:01:14","673 Latham, Milo","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 14:43:08","801 Purll, Laura","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 14:41:09","668 Stone, William","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 14:32:00","190 van Lennep, Harold","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 14:22:18","264 Anselmetti, Pietro","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 14:16:18","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 14:15:04","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 14:12:43","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 14:09:20","689 Suman, Anushka","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 13:57:14","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 13:52:39","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 13:48:32","701 Szigeti, Ignac","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 13:46:56","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 13:40:24","143 Angopa, Bernard","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/key_card_access.csv ====
+
+==== START OF FILE: src/dashboard.py ====
+import streamlit as st
+import pandas as pd
+
+from data_ingestion import load_key_card_data, load_employee_info
+from data_cleaning import clean_key_card_data, clean_employee_info, merge_key_card_with_employee_info
+from data_analysis import calculate_visit_counts, calculate_average_arrival_hour
+
+def main():
+    st.title("Office Attendance Dashboard")
+
+    # Step 1: Load Data
+    key_card_df = load_key_card_data("data/raw/key_card_access.csv")
+    employee_df = load_employee_info("data/raw/employee_info.csv")
+
+    # Step 2: Clean & merge
+    key_card_df = clean_key_card_data(key_card_df)
+    employee_df = clean_employee_info(employee_df)
+    merged_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+
+    # Step 3: Analysis
+    visit_counts = calculate_visit_counts(merged_df)
+    avg_arrivals = calculate_average_arrival_hour(merged_df)
+
+    # Step 4: Display results
+    st.subheader("Visit Counts by Employee ID")
+    st.dataframe(visit_counts)
+
+    st.subheader("Average Arrival Hour by Employee ID")
+    st.dataframe(avg_arrivals)
+
+if __name__ == "__main__":
+    main()
+
+==== END OF FILE: src/dashboard.py ====
+
+==== START OF FILE: src/data_analysis.py ====
+import pandas as pd
+
+def calculate_visit_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Count the number of visits (rows in the key card data) per employee_id.
+    """
+    return (
+        df.groupby("employee_id")
+        .size()
+        .reset_index(name="visit_count")
+    )
+
+def calculate_average_arrival_hour(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate average hour of arrival for each employee_id.
+    Uses the 'timestamp' column (renamed from 'Date/time' during cleaning).
+    """
+    df = df.copy()
+    # Use 'timestamp' instead of 'Date/time' to match cleaned data
+    df["arrival_hour"] = df["timestamp"].dt.hour
+    return (
+        df.groupby("employee_id")["arrival_hour"]
+        .mean()
+        .reset_index(name="avg_arrival_hour")
+    )
+
+==== END OF FILE: src/data_analysis.py ====
+
+==== START OF FILE: src/data_cleaning.py ====
+import pandas as pd
+import re
+
+def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the key card DataFrame:
+    1. Rename 'Date/time' to 'timestamp'
+    2. Extract employee_id from 'User' column
+    3. Convert timestamp to datetime
+    4. Sort by timestamp
+    """
+    # Make a copy to avoid SettingWithCopyWarning
+    df = df.copy()
+    
+    # 1. Rename date/time column
+    df.rename(columns={"Date/time": "timestamp"}, inplace=True)
+
+    # 2. Extract employee_id from User column (numeric part at start)
+    df["employee_id"] = df["User"].str.extract(r"^(\d+)\s", expand=False)
+    
+    # Drop rows where we couldn't extract an employee_id (e.g., cleaners)
+    df = df.dropna(subset=["employee_id"])
+    
+    # Convert employee_id to integer
+    df["employee_id"] = df["employee_id"].astype(int)
+
+    # 3. Convert timestamp to datetime (your data is in dd/mm/yyyy format)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], dayfirst=True, errors="coerce")
+    
+    # 4. Sort by timestamp
+    df = df.sort_values(by="timestamp")
+
+    return df
+
+def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add time analysis columns:
+    - date_only: Extract date from timestamp
+    - day_of_week: Monday, Tuesday, etc.
+    - time_only: HH:MM:SS
+    - earliest_scan_time: First scan per day per employee
+    """
+    # Ensure timestamp is datetime
+    if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    # Extract date (as date object)
+    df['date_only'] = df['timestamp'].dt.date
+    
+    # Get day of week
+    df['day_of_week'] = df['timestamp'].dt.day_name()
+    
+    # Get time only
+    df['time_only'] = df['timestamp'].dt.time
+    
+    # Calculate earliest scan time per day per employee
+    df['earliest_scan_time'] = df.groupby(
+        ['date_only', 'employee_id']
+    )['time_only'].transform('min')
+
+    return df
+
+def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the employee info DataFrame:
+    1. Rename 'Employee #' to 'employee_id'
+    2. Convert employee_id to integer, dropping any rows with missing values
+    3. Handle any missing values
+    """
+    # Make a copy to avoid SettingWithCopyWarning
+    df = df.copy()
+    
+    # 1. Rename the column (matching exact name from CSV)
+    df.rename(columns={"Employee #": "employee_id"}, inplace=True)
+    
+    # 2. Drop rows where employee_id is missing
+    df = df.dropna(subset=['employee_id'])
+    
+    # 3. Convert employee_id to int
+    df["employee_id"] = df["employee_id"].astype(int)
+    
+    return df
+
+def merge_key_card_with_employee_info(key_card_df: pd.DataFrame, employee_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge key card data with employee info on 'employee_id'.
+    Return the combined DataFrame.
+    """
+    merged_df = key_card_df.merge(employee_df, on="employee_id", how="left")
+    return merged_df
+
+def save_processed_data(df: pd.DataFrame, filepath: str):
+    """Save the processed DataFrame to a file."""
+    df.to_parquet(filepath, index=False)
+
+==== END OF FILE: src/data_cleaning.py ====
+
+==== START OF FILE: src/data_ingestion.py ====
+import pandas as pd
+from pathlib import Path
+
+def load_key_card_data(filepath: str) -> pd.DataFrame:
+    """
+    Load key card CSV data.
+    Assumes we have columns 'Date/time' and 'User'.
+    """
+    return pd.read_csv(filepath)
+
+def load_employee_info(filepath: str) -> pd.DataFrame:
+    """
+    Load employee info CSV data.
+    The important column here is 'Employee #'.
+    """
+    return pd.read_csv(filepath)
+
+if __name__ == "__main__":
+    # Example usage
+    base_path = Path(__file__).resolve().parent.parent  # go up one level from 'src'
+    key_card_path = base_path / "data" / "raw" / "key_card_access.csv"
+    employee_info_path = base_path / "data" / "raw" / "employee_info.csv"
+
+    key_card_df = load_key_card_data(str(key_card_path))
+    employee_info_df = load_employee_info(str(employee_info_path))
+
+    print("Key card shape:", key_card_df.shape)
+    print("Employee info shape:", employee_info_df.shape)
+
+==== END OF FILE: src/data_ingestion.py ====
+
+==== START OF FILE: src/data_visualization.py ====
+import plotly.express as px
+
+def plot_arrival_distribution(df: pd.DataFrame):
+    fig = px.histogram(df, x='hour', nbins=24, title='Distribution of Arrival Times')
+    fig.show()  # or return fig if used in Streamlit / Dash
+
+==== END OF FILE: src/data_visualization.py ====
+
+== END OF PROJECT CODEBASE DUMP ==
