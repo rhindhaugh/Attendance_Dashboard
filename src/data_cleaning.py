@@ -34,12 +34,18 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Add time analysis columns:
+    Add time analysis columns and keep only relevant columns:
+    - timestamp: Original datetime
+    - employee_id: ID number
+    - User: Original employee name
     - date_only: Extract date from timestamp
     - day_of_week: Monday, Tuesday, etc.
     - time_only: HH:MM:SS
     - earliest_scan_time: First scan per day per employee
     """
+    # Make a copy to avoid SettingWithCopyWarning
+    df = df.copy()
+    
     # Ensure timestamp is datetime
     if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -58,14 +64,29 @@ def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
         ['date_only', 'employee_id']
     )['time_only'].transform('min')
 
+    # Keep only the columns we care about
+    keep_cols = [
+        'timestamp',
+        'employee_id',
+        'User',           # keeping original name for reference
+        'date_only',
+        'day_of_week',
+        'time_only',
+        'earliest_scan_time'
+    ]
+    
+    # Subset to these columns only
+    df = df[keep_cols]
+
     return df
 
 def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean the employee info DataFrame:
     1. Rename 'Employee #' to 'employee_id'
-    2. Convert employee_id to integer, dropping any rows with missing values
-    3. Handle any missing values
+    2. Keep only the columns needed for analysis
+    3. Drop rows where employee_id is missing
+    4. Convert employee_id to int
     """
     # Make a copy to avoid SettingWithCopyWarning
     df = df.copy()
@@ -73,10 +94,32 @@ def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     # 1. Rename the column (matching exact name from CSV)
     df.rename(columns={"Employee #": "employee_id"}, inplace=True)
     
-    # 2. Drop rows where employee_id is missing
+    # 2. Keep only the columns you want for analysis
+    keep_cols = [
+        "employee_id",  # after rename
+        "Last name, First name",
+        "Status",
+        "Gender",
+        "Hire Date",
+        "Original Hire Date",
+        "Resignation Date",
+        "Working Status",
+        "Level",
+        "Employment Status: Date",
+        "Employment Status",
+        "FTE",
+        "Location",
+        "Division",
+        "Department",
+        "Job Title",
+        "Reporting to"
+    ]
+    df = df[keep_cols]  # subset to these columns only
+
+    # 3. Drop rows where employee_id is missing
     df = df.dropna(subset=['employee_id'])
     
-    # 3. Convert employee_id to int
+    # 4. Convert employee_id to int
     df["employee_id"] = df["employee_id"].astype(int)
     
     return df
