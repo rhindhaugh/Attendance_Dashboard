@@ -5,6 +5,11 @@ from src.data_cleaning import (
     merge_key_card_with_employee_info,
     add_time_analysis_columns
 )
+from src.data_analysis import (
+    build_attendance_table,
+    calculate_visit_counts,
+    calculate_average_arrival_hour
+)
 
 def main():
     """
@@ -14,8 +19,8 @@ def main():
     3. Clean both datasets
     4. Add time analysis columns
     5. Merge them
-    6. Print a summary of the results
-    7. Write out the combined data
+    6. Run attendance analysis
+    7. Save results
     """
 
     # STEP 1: Load data
@@ -44,14 +49,37 @@ def main():
     print("Employee info (clean) shape:", employee_df.shape)
     print("Combined shape:", combined_df.shape)
 
-    # Print the first few rows to confirm
-    print("\n=== COMBINED DF (head) ===")
-    print(combined_df.head())
+    # STEP 6: Run attendance analysis
+    attendance_table = build_attendance_table(combined_df)
+    visit_counts = calculate_visit_counts(combined_df)
+    avg_arrival_hours = calculate_average_arrival_hour(combined_df)
 
-    # STEP 6: Save the combined data
+    # Print summary statistics
+    print("\n=== ATTENDANCE SUMMARY ===")
+    days_summary = (
+        attendance_table[["employee_name", "days_attended"]]
+        .drop_duplicates()
+        .sort_values("days_attended", ascending=False)
+    )
+    print("\nTotal days attended by employee:")
+    print(days_summary.head(10))  # Show top 10
+
+    print("\nAverage arrival hours:")
+    print(avg_arrival_hours.head(10))  # Show top 10
+
+    # STEP 7: Save all results
+    # Save combined data
     combined_df.to_parquet("data/processed/combined_data.parquet", index=False)
-    # Also save as CSV for easier viewing if needed
     combined_df.to_csv("data/processed/combined_data.csv", index=False)
+    
+    # Save analysis results
+    attendance_table.to_csv("data/processed/attendance_table.csv", index=False)
+    visit_counts.to_csv("data/processed/visit_counts.csv", index=False)
+    avg_arrival_hours.to_csv("data/processed/avg_arrival_hours.csv", index=False)
+    days_summary.to_csv("data/processed/days_summary.csv", index=False)
+
+    print("\nAll data has been saved to the data/processed directory.")
+    print("\nTo view the dashboard, run: streamlit run src/dashboard.py")
 
 if __name__ == "__main__":
     main()
