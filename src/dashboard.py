@@ -92,6 +92,13 @@ def load_and_process_data():
     
     return combined_df
 
+def filter_by_date_range(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp, date_col: str = 'date') -> pd.DataFrame:
+    """Filter DataFrame by date range."""
+    return df[
+        (df[date_col] >= pd.Timestamp(start_date)) &
+        (df[date_col] <= pd.Timestamp(end_date))
+    ]
+
 def main():
     """Main function to run the dashboard."""
     st.title("Office Attendance Dashboard")
@@ -106,130 +113,159 @@ def main():
         weekly_counts = calculate_weekly_attendance_counts(combined_df)
         employee_summary = create_employee_summary(combined_df)
         
-        # Create tabs
-        tab1, tab2, tab3 = st.tabs(["Daily Overview", "Weekly Overview", "Employee Details"])
+        # Date range selector in sidebar
+        st.sidebar.header("Date Range Selection")
+        min_date = combined_df['date_only'].min()
+        max_date = combined_df['date_only'].max()
         
-        with tab1:
-            # Main attendance percentage chart (Tue-Thu only)
-            st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
-            fig_daily_pct = px.line(
-                tue_thu_attendance,
-                x='date',
-                y='percentage',
-                title='Daily Office Attendance Percentage (Tue-Thu)',
-                labels={'percentage': 'Attendance %', 'date': 'Date'}
-            )
-            st.plotly_chart(fig_daily_pct)
+        default_start = min_date
+        default_end = max_date
+        
+        # Quick selection buttons
+        st.sidebar.subheader("Quick Select")
+        if st.sidebar.button("Last 30 Days"):
+            default_start = max_date - pd.Timedelta(days=30)
+            default_end = max_date
+        if st.sidebar.button("Last 90 Days"):
+            default_start = max_date - pd.Timedelta(days=90)
+            default_end = max_date
+        
+        selected_dates = st.sidebar.date_input(
+            "Select Date Range",
+            value=(default_start, default_end),
+            min_value=min_date,
+            max_value=max_date
+        )
+        
+        # Ensure we have both start and end dates
+        if len(selected_dates) == 2:
+            start_date, end_date = selected_dates
             
-            # Daily attendance counts
-            st.subheader("Daily Attendance Counts")
-            fig_daily_counts = px.bar(
-                daily_counts,
-                x='date',
-                y=['london_hybrid_count', 'other_count'],
-                title='Daily Attendance by Employee Type',
-                labels={
+            # Filter all DataFrames
+            filtered_tue_thu = filter_by_date_range(tue_thu_attendance, start_date, end_date)
+            filtered_daily = filter_by_date_range(daily_counts, start_date, end_date)
+            filtered_weekly = filter_by_date_range(weekly_counts, start_date, end_date, 'week_start')
+            
+            # Create tabs
+            tab1, tab2, tab3 = st.tabs(["Daily Overview", "Weekly Overview", "Employee Details"])
+            
+            with tab1:
+                st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
+                if len(filtered_tue_thu) > 0:
+                    fig_daily_pct = px.line(
+                        filtered_tue_thu,
+                        x='date',
+                        y='percentage',
+                        title='Daily Office Attendance Percentage (Tue-Thu)',
+                        labels={'percentage': 'Attendance %', 'date': 'Date'}
+                    )
+                    st.plotly_chart(fig_daily_pct)
+                else:
+                    st.warning("No data available for selected date range")
+                
+                st.subheader("Daily Attendance Counts")
+                if len(filtered_daily) > 0:
+                    fig_daily_counts = px.bar(
+                        filtered_daily,
+                        x='date',
+                        y=['london_hybrid_count', 'other_count'],
+                        title='Daily Attendance by Employee Type',
+                        labels={
+                            'date': 'Date',
+                            'value': 'Number of Employees',
+                            'variable': 'Employee Type'
+                        },
+                        barmode='stack'
+                    )
+                    
+                    fig_daily_counts.update_traces(
+                        name='London + Hybrid',
+                        selector=dict(name='london_hybrid_count')
+                    )
+                    fig_daily_counts.update_traces(
+                        name='Other Employees',
+                        selector=dict(name='other_count')
+                    )
+                    
+                    st.plotly_chart(fig_daily_counts)
+                
+                # Daily details table
+                st.subheader("Daily Attendance Details")
+                weekday_data = filtered_daily[
+                    ~filtered_daily['day_of_week'].isin(['Saturday', 'Sunday'])
+                ].copy()
+                
+                display_cols = {
                     'date': 'Date',
-                    'value': 'Number of Employees',
-                    'variable': 'Employee Type'
-                },
-                barmode='stack'
-            )
-            
-            # Update legend labels
-            fig_daily_counts.update_traces(
-                name='London + Hybrid',
-                selector=dict(name='london_hybrid_count')
-            )
-            fig_daily_counts.update_traces(
-                name='Other Employees',
-                selector=dict(name='other_count')
-            )
-            
-            st.plotly_chart(fig_daily_counts)
-            
-            # Detailed daily table
-            st.subheader("Daily Attendance Details")
-            
-            # Filter for weekdays
-            weekday_data = daily_counts[
-                ~daily_counts['day_of_week'].isin(['Saturday', 'Sunday'])
-            ].copy()
-            
-            # Format for display
-            display_cols = {
-                'date': 'Date',
-                'day_of_week': 'Day',
-                'london_hybrid_count': 'London + Hybrid Count',
-                'other_count': 'Other Count',
-                'london_hybrid_percentage': 'London + Hybrid %'
-            }
-            
-            weekday_data = weekday_data[display_cols.keys()].rename(columns=display_cols)
-            st.dataframe(weekday_data, hide_index=True)
-        
-        with tab2:
-            # Weekly attendance percentage
-            st.subheader("Weekly Attendance Percentage")
-            fig_weekly_pct = px.line(
-                weekly_counts,
-                x='week_start',
-                y='london_hybrid_percentage',
-                title='Weekly Office Attendance Percentage',
-                labels={
-                    'london_hybrid_percentage': 'Attendance %',
-                    'week_start': 'Week Starting'
+                    'day_of_week': 'Day',
+                    'london_hybrid_count': 'London + Hybrid Present',
+                    'eligible_london_hybrid': 'Total Eligible London + Hybrid',
+                    'london_hybrid_percentage': 'London + Hybrid Attendance %',
+                    'other_count': 'Other Employees Present'
                 }
-            )
-            st.plotly_chart(fig_weekly_pct)
+                
+                weekday_data = weekday_data[display_cols.keys()].rename(columns=display_cols)
+                st.dataframe(weekday_data, hide_index=True)
             
-            # Weekly attendance counts
-            st.subheader("Weekly Attendance Counts")
-            fig_weekly_counts = px.bar(
-                weekly_counts,
-                x='week_start',
-                y=['london_hybrid_avg', 'other_avg'],
-                title='Average Daily Attendance by Employee Type (Weekly)',
-                labels={
+            with tab2:
+                st.subheader("Weekly Attendance Percentage")
+                if len(filtered_weekly) > 0:
+                    fig_weekly_pct = px.line(
+                        filtered_weekly,
+                        x='week_start',
+                        y='london_hybrid_percentage',
+                        title='Weekly Office Attendance Percentage',
+                        labels={
+                            'london_hybrid_percentage': 'Attendance %',
+                            'week_start': 'Week Starting'
+                        }
+                    )
+                    st.plotly_chart(fig_weekly_pct)
+                
+                st.subheader("Weekly Attendance Counts")
+                if len(filtered_weekly) > 0:
+                    fig_weekly_counts = px.bar(
+                        filtered_weekly,
+                        x='week_start',
+                        y=['london_hybrid_avg', 'other_avg'],
+                        title='Average Daily Attendance by Employee Type (Weekly)',
+                        labels={
+                            'week_start': 'Week Starting',
+                            'value': 'Average Daily Attendance',
+                            'variable': 'Employee Type'
+                        },
+                        barmode='stack'
+                    )
+                    
+                    fig_weekly_counts.update_traces(
+                        name='London + Hybrid',
+                        selector=dict(name='london_hybrid_avg')
+                    )
+                    fig_weekly_counts.update_traces(
+                        name='Other Employees',
+                        selector=dict(name='other_avg')
+                    )
+                    
+                    st.plotly_chart(fig_weekly_counts)
+                
+                # Weekly details table
+                st.subheader("Weekly Attendance Details")
+                display_cols_weekly = {
                     'week_start': 'Week Starting',
-                    'value': 'Average Daily Attendance',
-                    'variable': 'Employee Type'
-                },
-                barmode='stack'
-            )
+                    'london_hybrid_avg': 'Avg. London + Hybrid Count',
+                    'other_avg': 'Avg. Other Count',
+                    'london_hybrid_percentage': 'London + Hybrid %',
+                    'total_avg_attendance': 'Total Avg. Attendance'
+                }
+                weekly_display = filtered_weekly[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
+                st.dataframe(weekly_display, hide_index=True)
             
-            # Update legend labels
-            fig_weekly_counts.update_traces(
-                name='London + Hybrid',
-                selector=dict(name='london_hybrid_avg')
-            )
-            fig_weekly_counts.update_traces(
-                name='Other Employees',
-                selector=dict(name='other_avg')
-            )
-            
-            st.plotly_chart(fig_weekly_counts)
-            
-            # Weekly details table
-            st.subheader("Weekly Attendance Details")
-            display_cols_weekly = {
-                'week_start': 'Week Starting',
-                'london_hybrid_avg': 'Avg. London + Hybrid Count',
-                'other_avg': 'Avg. Other Count',
-                'london_hybrid_percentage': 'London + Hybrid %',
-                'total_avg_attendance': 'Total Avg. Attendance'
-            }
-            weekly_display = weekly_counts[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
-            st.dataframe(weekly_display, hide_index=True)
-            
-        with tab3:
-            st.subheader("Employee Attendance Summary")
-            st.dataframe(employee_summary, hide_index=True)
-            
-            # Add option to show raw data
-            if st.checkbox("Show Raw Attendance Data"):
-                st.subheader("Raw Daily Attendance")
-                st.write(daily_counts)
+            with tab3:
+                st.subheader("Employee Attendance Summary")
+                st.dataframe(employee_summary, hide_index=True)
+        
+        else:
+            st.error("Please select both start and end dates")
             
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
