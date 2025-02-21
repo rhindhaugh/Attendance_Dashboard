@@ -646,3 +646,155 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     result_df[numeric_cols] = result_df[numeric_cols].round(1)
     
     return result_df
+
+def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily attendance percentage, excluding Mon/Fri."""
+    df = df.copy()
+    
+    # Filter for Tue-Thu
+    tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+    df = df[tue_thu_mask]
+    
+    # Get all unique dates and sort them
+    all_dates = sorted(df['date_only'].unique())
+    
+    daily_attendance = []
+    for date in all_dates:
+        # Filter for employees who were employed on this date
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= date)
+            )
+        )
+        
+        # Filter for London & Hybrid employees
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Calculate metrics
+        eligible_employees = df[active_mask & london_hybrid_mask]['employee_id'].nunique()
+        present_employees = df[
+            (df['date_only'] == date) &
+            active_mask & 
+            london_hybrid_mask &
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        percentage = (present_employees / eligible_employees * 100) if eligible_employees > 0 else 0
+        
+        daily_attendance.append({
+            'date': date,
+            'total_eligible': eligible_employees,
+            'total_present': present_employees,
+            'percentage': round(percentage, 1)
+        })
+    
+    return pd.DataFrame(daily_attendance)
+
+def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily attendance counts split by employee type."""
+    # Calculate attendance for each day
+    daily_counts = []
+    
+    for date in sorted(df['date_only'].unique()):
+        date_mask = (df['date_only'] == date)
+        
+        # Consider employment dates
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= date)
+            )
+        )
+        
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Count London + Hybrid who were present
+        london_hybrid_count = df[
+            date_mask & 
+            active_mask &
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Count others who were present
+        others_count = df[
+            date_mask & 
+            active_mask &
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Get total eligible London + Hybrid employees for that date
+        total_eligible_london_hybrid = df[
+            active_mask &
+            london_hybrid_mask
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage based on eligible employees
+        attendance_percentage = (
+            (london_hybrid_count / total_eligible_london_hybrid * 100)
+            if total_eligible_london_hybrid > 0 else 0
+        )
+        
+        daily_counts.append({
+            'date': date,
+            'day_of_week': pd.Timestamp(date).strftime('%A'),
+            'london_hybrid_count': london_hybrid_count,
+            'other_count': others_count,
+            'eligible_london_hybrid': total_eligible_london_hybrid,  # Added for verification
+            'london_hybrid_percentage': round(attendance_percentage, 1),
+            'total_attendance': london_hybrid_count + others_count
+        })
+    
+    return pd.DataFrame(daily_counts)
+
+def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate weekly attendance counts split by employee type."""
+    df = df.copy()
+    
+    # Add week start date (Monday)
+    df['week_start'] = df['date_only'] - pd.to_timedelta(df['date_only'].dt.dayofweek, unit='d')
+    
+    weekly_counts = []
+    for week_start in sorted(df['week_start'].unique()):
+        week_end = week_start + pd.Timedelta(days=6)
+        week_mask = (df['date_only'] >= week_start) & (df['date_only'] <= week_end)
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Calculate average daily attendance for the week
+        london_hybrid_avg = df[
+            week_mask & 
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        others_avg = df[
+            week_mask & 
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        # Get average eligible London + Hybrid employees for the week
+        avg_eligible_london_hybrid = df[
+            week_mask & 
+            london_hybrid_mask
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        attendance_percentage = (
+            (london_hybrid_avg / avg_eligible_london_hybrid * 100)
+            if avg_eligible_london_hybrid > 0 else 0
+        )
+        
+        weekly_counts.append({
+            'week_start': week_start,
+            'london_hybrid_avg': round(london_hybrid_avg, 1),
+            'other_avg': round(others_avg, 1),
+            'london_hybrid_percentage': round(attendance_percentage, 1),
+            'total_avg_attendance': round(london_hybrid_avg + others_avg, 1)
+        })
+    
+    return pd.DataFrame(weekly_counts)

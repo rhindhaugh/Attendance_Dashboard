@@ -26,7 +26,10 @@ from data_analysis import (
     analyze_entrance_patterns,
     create_employee_summary,
     calculate_weekday_attendance,
-    calculate_weekly_tue_thu_attendance
+    calculate_weekly_tue_thu_attendance,
+    calculate_tue_thu_attendance_percentage,
+    calculate_daily_attendance_counts,
+    calculate_weekly_attendance_counts
 )
 
 def load_data():
@@ -98,91 +101,135 @@ def main():
         combined_df = load_and_process_data()
         
         # Create analyses
+        tue_thu_attendance = calculate_tue_thu_attendance_percentage(combined_df)
+        daily_counts = calculate_daily_attendance_counts(combined_df)
+        weekly_counts = calculate_weekly_attendance_counts(combined_df)
         employee_summary = create_employee_summary(combined_df)
-        daily_attendance = calculate_daily_attendance_percentage(combined_df)
-        weekday_attendance = calculate_weekday_attendance(combined_df)
-        weekly_tue_thu = calculate_weekly_tue_thu_attendance(combined_df)
         
-        # Create tabs for different views
-        tab1, tab2, tab3 = st.tabs(["Daily Overview", "Attendance Patterns", "Employee Summary"])
+        # Create tabs
+        tab1, tab2, tab3 = st.tabs(["Daily Overview", "Weekly Overview", "Employee Details"])
         
         with tab1:
-            st.subheader("Daily Attendance Percentage")
-            fig_daily = px.line(
-                daily_attendance,
+            # Main attendance percentage chart (Tue-Thu only)
+            st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
+            fig_daily_pct = px.line(
+                tue_thu_attendance,
                 x='date',
                 y='percentage',
-                title='Daily Office Attendance Percentage'
+                title='Daily Office Attendance Percentage (Tue-Thu)',
+                labels={'percentage': 'Attendance %', 'date': 'Date'}
             )
-            st.plotly_chart(fig_daily)
-        
-        with tab2:
-            # Weekday Average Attendance
-            st.subheader("Average Attendance by Day of Week")
+            st.plotly_chart(fig_daily_pct)
             
-            # Create grouped bar chart using plotly
-            weekday_fig = px.bar(
-                weekday_attendance,
-                x='day_of_week',
-                y=['london_hybrid_avg', 'others_avg'],
-                title='Average Daily Attendance by Employee Type',
+            # Daily attendance counts
+            st.subheader("Daily Attendance Counts")
+            fig_daily_counts = px.bar(
+                daily_counts,
+                x='date',
+                y=['london_hybrid_count', 'other_count'],
+                title='Daily Attendance by Employee Type',
                 labels={
-                    'day_of_week': 'Day of Week',
-                    'value': 'Average Attendance',
+                    'date': 'Date',
+                    'value': 'Number of Employees',
                     'variable': 'Employee Type'
                 },
-                barmode='group'
+                barmode='stack'
             )
             
             # Update legend labels
-            weekday_fig.update_traces(
+            fig_daily_counts.update_traces(
+                name='London + Hybrid',
+                selector=dict(name='london_hybrid_count')
+            )
+            fig_daily_counts.update_traces(
+                name='Other Employees',
+                selector=dict(name='other_count')
+            )
+            
+            st.plotly_chart(fig_daily_counts)
+            
+            # Detailed daily table
+            st.subheader("Daily Attendance Details")
+            
+            # Filter for weekdays
+            weekday_data = daily_counts[
+                ~daily_counts['day_of_week'].isin(['Saturday', 'Sunday'])
+            ].copy()
+            
+            # Format for display
+            display_cols = {
+                'date': 'Date',
+                'day_of_week': 'Day',
+                'london_hybrid_count': 'London + Hybrid Count',
+                'other_count': 'Other Count',
+                'london_hybrid_percentage': 'London + Hybrid %'
+            }
+            
+            weekday_data = weekday_data[display_cols.keys()].rename(columns=display_cols)
+            st.dataframe(weekday_data, hide_index=True)
+        
+        with tab2:
+            # Weekly attendance percentage
+            st.subheader("Weekly Attendance Percentage")
+            fig_weekly_pct = px.line(
+                weekly_counts,
+                x='week_start',
+                y='london_hybrid_percentage',
+                title='Weekly Office Attendance Percentage',
+                labels={
+                    'london_hybrid_percentage': 'Attendance %',
+                    'week_start': 'Week Starting'
+                }
+            )
+            st.plotly_chart(fig_weekly_pct)
+            
+            # Weekly attendance counts
+            st.subheader("Weekly Attendance Counts")
+            fig_weekly_counts = px.bar(
+                weekly_counts,
+                x='week_start',
+                y=['london_hybrid_avg', 'other_avg'],
+                title='Average Daily Attendance by Employee Type (Weekly)',
+                labels={
+                    'week_start': 'Week Starting',
+                    'value': 'Average Daily Attendance',
+                    'variable': 'Employee Type'
+                },
+                barmode='stack'
+            )
+            
+            # Update legend labels
+            fig_weekly_counts.update_traces(
                 name='London + Hybrid',
                 selector=dict(name='london_hybrid_avg')
             )
-            weekday_fig.update_traces(
+            fig_weekly_counts.update_traces(
                 name='Other Employees',
-                selector=dict(name='others_avg')
+                selector=dict(name='other_avg')
             )
             
-            st.plotly_chart(weekday_fig)
+            st.plotly_chart(fig_weekly_counts)
             
-            # Weekly Tue-Thu Average Attendance
-            st.subheader("Weekly Average Attendance (Tue-Thu Only)")
+            # Weekly details table
+            st.subheader("Weekly Attendance Details")
+            display_cols_weekly = {
+                'week_start': 'Week Starting',
+                'london_hybrid_avg': 'Avg. London + Hybrid Count',
+                'other_avg': 'Avg. Other Count',
+                'london_hybrid_percentage': 'London + Hybrid %',
+                'total_avg_attendance': 'Total Avg. Attendance'
+            }
+            weekly_display = weekly_counts[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
+            st.dataframe(weekly_display, hide_index=True)
             
-            weekly_fig = px.bar(
-                weekly_tue_thu,
-                x='week_start',
-                y='avg_attendance',
-                title='Average Weekly Attendance (Tuesdays-Thursdays)',
-                labels={
-                    'week_start': 'Week Starting',
-                    'avg_attendance': 'Average Attendance'
-                }
-            )
-            
-            # Customize weekly chart
-            weekly_fig.update_xaxes(
-                tickangle=45,
-                tickformat='%Y-%m-%d'
-            )
-            
-            st.plotly_chart(weekly_fig)
-            
-            # Option to show raw data
-            if st.checkbox("Show Raw Data"):
-                st.subheader("Weekday Averages")
-                st.write(weekday_attendance)
-                
-                st.subheader("Weekly Averages (Tue-Thu)")
-                st.write(weekly_tue_thu)
-        
         with tab3:
             st.subheader("Employee Attendance Summary")
-            st.dataframe(employee_summary)
+            st.dataframe(employee_summary, hide_index=True)
             
-            if st.checkbox("Show Raw Data Tables"):
-                st.subheader("Daily Attendance Percentages")
-                st.write(daily_attendance)
+            # Add option to show raw data
+            if st.checkbox("Show Raw Attendance Data"):
+                st.subheader("Raw Daily Attendance")
+                st.write(daily_counts)
             
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
