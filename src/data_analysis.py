@@ -2,16 +2,33 @@ import pandas as pd
 
 def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Given a DataFrame with at least 'employee_id' and 'date_only' columns,
-    returns a table showing attendance for each employee on each date.
-    
-    Returns DataFrame with columns:
-    - employee_id
-    - employee_name (from 'Last name, First name')
-    - date_only
-    - present (Yes/No)
-    - days_attended (total # of days that employee showed up)
+    Build attendance table from key card data.
     """
+    df = df.copy()
+    
+    # Debug step 1: Show earliest 3 scans per day per employee
+    print("\n[DEBUG] Earliest 3 scans per day per employee:")
+    temp = (
+        df
+        .sort_values(["employee_id", "date_only", "parsed_time"])
+        .groupby(["employee_id", "date_only"])
+        .head(3)
+    )
+    print(temp[["employee_id", "date_only", "parsed_time", "Where"]].head(50))
+    
+    # Debug step 3: Check location/working status filtering
+    location_mask = (df["Location"] == "London UK")
+    working_mask = (df["Working Status"] == "Hybrid")
+    print("\n[DEBUG] Location/Working Status Analysis:")
+    print(f"Total rows: {len(df)}")
+    print(f"Rows with non-London or non-Hybrid: {len(df[~(location_mask & working_mask)])}")
+    
+    # Group value counts for investigation
+    print("\nLocation distribution:")
+    print(df["Location"].value_counts())
+    print("\nWorking Status distribution:")
+    print(df["Working Status"].value_counts())
+    
     # 1) Get unique employees and dates
     unique_employees = df[["employee_id", "Last name, First name"]].drop_duplicates()
     unique_dates = df["date_only"].unique()
@@ -42,9 +59,14 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
         how="left"
     )
     
-    # Convert NaN visits to 0 and mark presence
+    # After marking presence
     merged["visits"] = merged["visits"].fillna(0)
     merged["present"] = merged["visits"].map({0: "No"}).fillna("Yes")
+    
+    # Debug step 2: Show rows marked as 'present'
+    print("\n[DEBUG] Checking presence logic. Sample 'present' rows:")
+    present_only = merged[merged["present"] == "Yes"]
+    print(present_only[["employee_id", "employee_name", "date_only", "present", "visits"]].head(30))
     
     # 4) Calculate total days attended per employee
     days_attended = (
@@ -60,14 +82,7 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     # Sort by employee name and date
     final_df = final_df.sort_values(["employee_name", "date_only"])
     
-    # Keep only the columns we want
-    return final_df[[
-        "employee_id",
-        "employee_name",
-        "date_only",
-        "present",
-        "days_attended"
-    ]]
+    return final_df
 
 def calculate_visit_counts(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -80,15 +95,554 @@ def calculate_visit_counts(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 def calculate_average_arrival_hour(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate average hour of arrival for each employee_id.
-    Uses the 'timestamp' column (renamed from 'Date/time' during cleaning).
-    """
+    """Calculate the average arrival hour for each employee."""
     df = df.copy()
-    # Use 'timestamp' instead of 'Date/time' to match cleaned data
-    df["arrival_hour"] = df["timestamp"].dt.hour
-    return (
-        df.groupby("employee_id")["arrival_hour"]
-        .mean()
-        .reset_index(name="avg_arrival_hour")
+    
+    # Get first scan of each day for each employee
+    first_scans = (
+        df.sort_values(['employee_id', 'date_only', 'parsed_time'])
+        .groupby(['employee_id', 'date_only'])
+        .first()
+        .reset_index()
     )
+    
+    # Calculate arrival hour from parsed_time
+    first_scans['arrival_hour'] = first_scans['parsed_time'].dt.hour
+    
+    # Calculate average arrival hour per employee
+    return (
+        first_scans
+        .groupby('employee_id')['arrival_hour']
+        .mean()
+        .round(2)
+        .reset_index()
+    )
+
+def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the daily attendance percentage for hybrid employees.
+    Only counts employees who:
+    - Are based in London UK
+    - Have hybrid working status
+    - Were employed on that date (after hire date, before resignation)
+    """
+    # Get all unique dates and sort them
+    all_dates = sorted(df['date_only'].unique())
+    
+    # Initialize results
+    daily_attendance = []
+    
+    for date in all_dates:
+        # Filter for employees who were employed on this date
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |  # Still employed
+                (pd.to_datetime(df['Most recent day worked']) >= date)  # Not yet left
+            )
+        )
+        
+        # Filter for London & Hybrid employees
+        location_mask = (df['Location'] == 'London UK')
+        working_mask = (df['Working Status'] == 'Hybrid')
+        
+        # Get total eligible employees for this date
+        eligible_employees = df[
+            active_mask & location_mask & working_mask
+        ]['employee_id'].nunique()
+        
+        # Get employees who were present
+        present_employees = df[
+            (df['date_only'] == date) &
+            active_mask & 
+            location_mask & 
+            working_mask &
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        if eligible_employees > 0:
+            percentage = (present_employees / eligible_employees) * 100
+        else:
+            percentage = 0
+        
+        daily_attendance.append({
+            'date': date,
+            'total_eligible': eligible_employees,
+            'total_present': present_employees,
+            'percentage': round(percentage, 1)
+        })
+    
+    return pd.DataFrame(daily_attendance)
+
+def calculate_weekly_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate weekly attendance percentage, considering Tuesday-Thursday.
+    Uses the attendance table (one row per employee per day).
+    """
+    # Ensure we're working with datetime
+    df = df.copy()
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    
+    # Filter for office days and create week_commencing
+    office_days = df[df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])]
+    office_days['week_commencing'] = office_days['date_only'] - pd.to_timedelta(
+        office_days['date_only'].dt.dayofweek, unit='d')
+    
+    result = []
+    for week in sorted(office_days['week_commencing'].unique()):
+        week_end = week + pd.Timedelta(days=6)
+        
+        # Get eligible employees for this week
+        eligible_employees = df[
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') &
+            (pd.to_datetime(df['Combined hire date']) <= week_end) &
+            ((pd.to_datetime(df['Most recent day worked']) >= week) | 
+             (df['Status'] == 'Active'))
+        ].drop_duplicates('employee_id')
+        
+        if len(eligible_employees) == 0:
+            continue
+        
+        # For each eligible employee, count their attendance days this week
+        total_attendance = 0
+        for _, emp in eligible_employees.iterrows():
+            days_attended = office_days[
+                (office_days['week_commencing'] == week) &
+                (office_days['employee_id'] == emp['employee_id']) &
+                (office_days['present'] == 'Yes')
+            ]['date_only'].nunique()
+            total_attendance += days_attended
+        
+        # Total possible days is (eligible employees × 3 days)
+        total_possible_days = len(eligible_employees) * 3
+        attendance_percentage = (total_attendance / total_possible_days * 100)
+        
+        result.append({
+            'week_commencing': week,
+            'days_attended': total_attendance,
+            'total_possible_days': total_possible_days,
+            'attendance_percentage': attendance_percentage
+        })
+    
+    return pd.DataFrame(result).sort_values('week_commencing')
+
+def calculate_attendance_by_weekday(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate attendance numbers by day of week.
+    
+    Args:
+        df: Combined dataframe with employee and attendance data
+        
+    Returns:
+        DataFrame with attendance by weekday
+    """
+    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    weekday_counts = df.groupby('day_of_week').apply(
+        lambda x: pd.Series({
+            'london_hybrid_count': sum((x['Location'] == 'London UK') & 
+                                     (x['Working Status'] == 'Hybrid') &
+                                     (x['present'] == 'Yes')),
+            'other_count': sum(~((x['Location'] == 'London UK') & 
+                               (x['Working Status'] == 'Hybrid')) &
+                             (x['present'] == 'Yes'))
+        })
+    ).reset_index()
+    
+    weekday_counts['day_of_week'] = pd.Categorical(
+        weekday_counts['day_of_week'], 
+        categories=weekday_order, 
+        ordered=True
+    )
+    return weekday_counts.sort_values('day_of_week')
+
+def calculate_attendance_by_division(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate attendance numbers and percentages by division.
+    Counts unique employee-days for accurate attendance tracking.
+    """
+    # Get unique divisions, filtering out NaN values
+    unique_divisions = [d for d in df['Division'].unique() if pd.notna(d)]
+    unique_divisions.sort()  # Sort alphabetically
+    
+    result = []
+    for division in unique_divisions:
+        # Get division employees
+        division_employees = df[
+            (df['Division'] == division) & 
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid')
+        ].drop_duplicates('employee_id')
+        
+        if len(division_employees) == 0:
+            continue
+        
+        # Count unique employee-days of attendance
+        attendance_days = df[
+            (df['Division'] == division) & 
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') & 
+            (df['present'] == 'Yes')
+        ].groupby('employee_id')['date_only'].nunique().sum()
+        
+        # Calculate total possible days for each employee based on their employment period
+        total_possible_days = 0
+        for _, emp in division_employees.iterrows():
+            hire_date = pd.to_datetime(emp['Combined hire date'])
+            last_day = pd.to_datetime(emp['Most recent day worked'])
+            
+            # Get all dates in the dataset
+            all_dates = pd.to_datetime(df['date_only'].unique())
+            
+            # Filter dates to employment period
+            valid_dates = all_dates[
+                (all_dates >= hire_date) & 
+                ((all_dates <= last_day) | (emp['Status'] == 'Active'))
+            ]
+            
+            total_possible_days += len(valid_dates)
+        
+        # Calculate percentage
+        attendance_percentage = (attendance_days / total_possible_days * 100) if total_possible_days > 0 else 0
+        
+        result.append({
+            'division': division,
+            'attendance_days': attendance_days,
+            'total_possible_days': total_possible_days,
+            'attendance_percentage': attendance_percentage
+        })
+    
+    return pd.DataFrame(result)
+
+def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate individual employee attendance metrics."""
+    result = []
+    
+    # Ensure Date/time is properly parsed
+    df['Date/time'] = pd.to_datetime(df['Date/time'], dayfirst=True)
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    
+    # Add more detailed debugging
+    print("\nOverall Dataset Analysis:")
+    print(f"Total unique dates: {df['date_only'].nunique()}")
+    print(f"Date range: {df['date_only'].min()} to {df['date_only'].max()}")
+    print("\nEntrance distribution by hour:")
+    print(df['Date/time'].dt.hour.value_counts().sort_index())
+    print("\nEntrance distribution by location:")
+    print(df['Where'].value_counts())
+    
+    # Get the date range of our key card data
+    data_start_date = df['date_only'].min()
+    data_end_date = df['date_only'].max()
+    
+    # Get unique employees
+    unique_employees = df['employee_id'].unique()
+    
+    for emp_id in unique_employees:
+        emp_data = df[df['employee_id'] == emp_id].copy()
+        
+        # Get employee info
+        first_record = emp_data.iloc[0]
+        emp_name = first_record['Last name, First name']
+        hire_date = pd.to_datetime(first_record['Combined hire date'])
+        last_day = pd.to_datetime(first_record['Most recent day worked'])
+        location = first_record['Location']
+        working_status = first_record['Working Status']
+        status = first_record['Status']
+        
+        # If last_day is NaT (for active employees), use the end of our data range
+        if pd.isna(last_day) and status == 'Active':
+            last_day = data_end_date
+        
+        # Total days attended (any day)
+        days_attended = emp_data[emp_data['present'] == 'Yes']['date_only'].nunique()
+        
+        # Initialize core days metrics
+        core_days_percentage = None
+        avg_entry_time = None
+        
+        # Only calculate core metrics for London Hybrid employees
+        if location == 'London UK' and working_status == 'Hybrid':
+            # Get all core days (Tue-Thu) during employment AND within our data range
+            start_date = max(hire_date, data_start_date)
+            end_date = min(last_day, data_end_date)
+            
+            all_dates = pd.date_range(start=start_date, end=end_date)
+            core_weekdays = all_dates[all_dates.dayofweek.isin([1, 2, 3])]  # Tue=1, Wed=2, Thu=3
+            total_possible_core_days = len(core_weekdays)
+            
+            # Filter for attended core days
+            core_attendance = emp_data[
+                (emp_data['present'] == 'Yes') & 
+                (emp_data['date_only'].dt.dayofweek.isin([1, 2, 3]))
+            ]
+            
+            # Debug: Print sample of core attendance for this employee
+            if not core_attendance.empty:
+                print(f"\nDebug - Employee {emp_id} ({emp_name}) core attendance sample:")
+                print(f"Date/time dtype: {core_attendance['Date/time'].dtype}")
+                print("\nFirst 5 records sorted by Date/time:")
+                debug_sample = (
+                    core_attendance
+                    .sort_values('Date/time')
+                    .head()
+                    [['date_only', 'Date/time', 'Event', 'Where']]
+                )
+                print(debug_sample)
+            
+            # Count unique core days attended
+            core_days_attended = core_attendance['date_only'].nunique()
+            
+            # Calculate percentage
+            if total_possible_core_days > 0:
+                core_days_percentage = round((core_days_attended / total_possible_core_days) * 100, 1)
+            
+            # Calculate average first entry time for core days
+            if not core_attendance.empty:
+                # Sort by date/time and get actual first entry of each day
+                daily_first_entries = (
+                    core_attendance
+                    .sort_values('Date/time', ascending=True)
+                    .groupby('date_only')['Date/time']
+                    .first()
+                )
+                
+                # Flag late entries (after 11:00)
+                late_entries = daily_first_entries[daily_first_entries.dt.hour >= 11]
+                if not late_entries.empty:
+                    print(f"\nLate entries for {emp_name}:")
+                    print(late_entries)
+                    print(f"Entrance locations for late entries:")
+                    print(core_attendance[
+                        core_attendance['date_only'].isin(late_entries.index)
+                    ]['Where'].value_counts())
+                
+                # Debug: Print first entries for verification
+                print("\nFirst entries of each day:")
+                print(daily_first_entries.head())
+                
+                # Extract just the time component
+                daily_times = daily_first_entries.dt.time
+                
+                # Convert times to minutes since midnight
+                minutes = pd.Series([
+                    t.hour * 60 + t.minute 
+                    for t in daily_times
+                ])
+                
+                # Calculate average and convert back to time string
+                avg_minutes = round(minutes.mean())
+                hours = avg_minutes // 60
+                mins = avg_minutes % 60
+                avg_entry_time = f"{int(hours):02d}:{int(mins):02d}"
+                
+                # Debug: Print time calculation details
+                print(f"\nAverage calculation:")
+                print(f"Total minutes: {minutes.tolist()}")
+                print(f"Average minutes: {avg_minutes}")
+                print(f"Calculated time: {avg_entry_time}")
+        
+        result.append({
+            'employee_name': emp_name,
+            'days_attended': days_attended,
+            'core_days_percentage': core_days_percentage,
+            'avg_entry_time': avg_entry_time
+        })
+    
+    return pd.DataFrame(result)
+
+def calculate_weekday_attendance(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate average attendance by day of week, split by London+Hybrid vs Others.
+    """
+    # Create London+Hybrid mask
+    london_hybrid = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+    
+    # Group by day of week and calculate attendance for each group
+    london_hybrid_stats = df[london_hybrid].groupby(['day_of_week', 'date_only'])['employee_id'].nunique().reset_index()
+    others_stats = df[~london_hybrid].groupby(['day_of_week', 'date_only'])['employee_id'].nunique().reset_index()
+    
+    # Calculate averages for both groups
+    london_hybrid_avg = london_hybrid_stats.groupby('day_of_week')['employee_id'].mean().round(1)
+    others_avg = others_stats.groupby('day_of_week')['employee_id'].mean().round(1)
+    
+    # Combine into final DataFrame
+    result = pd.DataFrame({
+        'london_hybrid_avg': london_hybrid_avg,
+        'others_avg': others_avg
+    }).reset_index()
+    
+    # Ensure days are in correct order
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    result['day_of_week'] = pd.Categorical(result['day_of_week'], categories=day_order, ordered=True)
+    result = result.sort_values('day_of_week')
+    
+    return result
+
+def calculate_weekly_tue_thu_attendance(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate average attendance for weeks with complete Mon-Fri data,
+    considering only Tue-Thu.
+    """
+    # Add week start date (Monday)
+    df = df.copy()
+    df['week_start'] = df['date_only'] - pd.to_timedelta(df['date_only'].dt.dayofweek, unit='d')
+    
+    # Filter for Tuesday-Thursday
+    tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+    
+    # Calculate average attendance per week
+    weekly_attendance = (
+        df[tue_thu_mask]
+        .groupby(['week_start', 'date_only'])['employee_id']
+        .nunique()
+        .reset_index()
+    )
+    
+    # Calculate weekly average (across Tue-Thu)
+    weekly_avg = (
+        weekly_attendance
+        .groupby('week_start')['employee_id']
+        .mean()
+        .round(1)
+        .reset_index()
+        .rename(columns={'employee_id': 'avg_attendance'})
+    )
+    
+    # Sort by week
+    weekly_avg = weekly_avg.sort_values('week_start')
+    
+    return weekly_avg
+
+def analyze_entrance_patterns(df: pd.DataFrame) -> None:
+    """Analyze and print entrance patterns from the data."""
+    # Calculate first entry time per person per day
+    daily_first_entries = df.groupby(['date_only', 'employee_id'])['parsed_time'].min()
+    
+    # Calculate average entry time per person
+    avg_entry_times = daily_first_entries.dt.hour + daily_first_entries.dt.minute / 60
+    
+    print("\nEntrance Pattern Analysis")
+    print("-" * 30)
+    print(f"Average entry time: {avg_entry_times.mean():.2f} hours")
+    print(f"Earliest entry: {avg_entry_times.min():.2f} hours")
+    print(f"Latest entry: {avg_entry_times.max():.2f} hours")
+    
+    # Analyze by day of week
+    weekday_entries = df.groupby('day_of_week').agg({
+        'employee_id': 'nunique',
+        'parsed_time': lambda x: (x.dt.hour + x.dt.minute / 60).mean()
+    })
+    
+    print("\nAverage Entry Times by Day:")
+    for day, stats in weekday_entries.iterrows():
+        print(f"{day}: {stats['parsed_time']:.2f} hours ({stats['employee_id']} employees)")
+
+def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create employee summary table with attendance metrics.
+    
+    Args:
+        df: Combined dataframe with employee and attendance data
+        
+    Returns:
+        DataFrame with employee attendance summary
+    """
+    # Ensure date columns are datetime
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    df['Combined hire date'] = pd.to_datetime(df['Combined hire date'])
+    df['Most recent day worked'] = pd.to_datetime(df['Most recent day worked'])
+    
+    # Get the full date range from the data
+    date_range = pd.date_range(
+        start=df['date_only'].min(),
+        end=df['date_only'].max()
+    )
+    
+    # Initialize results list
+    results = []
+    
+    # Get unique employees
+    unique_employees = df.drop_duplicates('employee_id')[
+        ['employee_id', 'Last name, First name']
+    ]
+    
+    for _, emp in unique_employees.iterrows():
+        emp_id = emp['employee_id']
+        emp_name = emp['Last name, First name']
+        
+        # Get employee's data
+        emp_data = df[df['employee_id'] == emp_id].copy()
+        if emp_data.empty:
+            continue
+            
+        # Get first record for this employee
+        first_record = emp_data.iloc[0]
+        
+        # Get employment dates
+        hire_date = pd.to_datetime(first_record['Combined hire date'])
+        last_day = pd.to_datetime(first_record['Most recent day worked'])
+        
+        # If last_day is NaT (active employee), use the end of our data range
+        if pd.isna(last_day):
+            last_day = date_range[-1]
+            
+        # Filter for days when employee was employed
+        employed_dates = date_range[
+            (date_range >= hire_date) & 
+            (date_range <= last_day)
+        ]
+        
+        # Get attended days
+        attended_days = emp_data[
+            (emp_data['present'] == 'Yes')
+        ]['date_only'].nunique()
+        
+        # Get Tue-Thu metrics
+        tue_thu_mask = emp_data['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+        attended_tue_thu = emp_data[
+            (emp_data['present'] == 'Yes') & 
+            tue_thu_mask
+        ]['date_only'].nunique()
+        
+        # Count potential Tue-Thu during employment
+        employed_tue_thu = len(employed_dates[employed_dates.dayofweek.isin([1, 2, 3])])
+        
+        # Calculate average entry time for Tue-Thu
+        tue_thu_entries = emp_data[
+            (emp_data['present'] == 'Yes') & 
+            tue_thu_mask
+        ].groupby('date_only')['parsed_time'].min()
+        
+        avg_entry_time = (
+            tue_thu_entries.dt.hour + 
+            tue_thu_entries.dt.minute / 60
+        ).mean()
+        
+        # Convert average entry time to string format
+        if pd.notna(avg_entry_time):
+            hours = int(avg_entry_time)
+            minutes = int((avg_entry_time % 1) * 60)
+            avg_entry_str = f"{hours:02d}:{minutes:02d}"
+        else:
+            avg_entry_str = None
+        
+        results.append({
+            'employee_id': emp_id,
+            'name': emp_name,
+            'total_days_attended': attended_days,
+            'tue_thu_days_attended': attended_tue_thu,
+            'potential_tue_thu_days': employed_tue_thu,
+            'avg_entry_time': avg_entry_str,
+            'attendance_rate': round(attended_tue_thu / employed_tue_thu * 100, 1) if employed_tue_thu > 0 else 0
+        })
+    
+    # Convert to DataFrame and sort by attendance rate
+    result_df = pd.DataFrame(results).sort_values('attendance_rate', ascending=False)
+    
+    # Round numeric columns
+    numeric_cols = ['total_days_attended', 'tue_thu_days_attended', 'potential_tue_thu_days', 'attendance_rate']
+    result_df[numeric_cols] = result_df[numeric_cols].round(1)
+    
+    return result_df
