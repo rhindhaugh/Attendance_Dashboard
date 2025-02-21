@@ -97,6 +97,19 @@ def filter_by_date_range(df: pd.DataFrame, start_date: pd.Timestamp, end_date: p
         (df[date_col] <= pd.Timestamp(end_date))
     ]
 
+def format_date(date_str):
+    """Convert date string to formatted date (e.g., '7th August 2024')"""
+    date = pd.to_datetime(date_str)
+    
+    def ordinal(n):
+        if 10 <= n % 100 <= 20:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+        return str(n) + suffix
+    
+    return f"{ordinal(date.day)} {date.strftime('%B %Y')}"
+
 def main():
     """Main function to run the dashboard."""
     st.title("Office Attendance Dashboard")
@@ -191,21 +204,24 @@ def main():
                 
                 # Daily details table
                 st.subheader("Daily Attendance Details")
-                weekday_data = filtered_daily[
-                    ~filtered_daily['day_of_week'].isin(['Saturday', 'Sunday'])
-                ].copy()
                 
-                display_cols = {
+                # Format the date column before display
+                display_df = filtered_daily.copy()
+                display_df['date'] = display_df['date'].apply(format_date)
+                
+                # Rename columns to be more readable
+                column_mapping = {
                     'date': 'Date',
-                    'day_of_week': 'Day',
+                    'day_of_week': 'Day of Week',
                     'london_hybrid_count': 'London + Hybrid Present',
+                    'other_count': 'Other Employees Present',
                     'eligible_london_hybrid': 'Total Eligible London + Hybrid',
                     'london_hybrid_percentage': 'London + Hybrid Attendance %',
-                    'other_count': 'Other Employees Present'
+                    'total_attendance': 'Total Attendance'
                 }
                 
-                weekday_data = weekday_data[display_cols.keys()].rename(columns=display_cols)
-                st.dataframe(weekday_data, hide_index=True)
+                display_df = display_df.rename(columns=column_mapping)
+                st.dataframe(display_df, hide_index=True)
             
             with tab2:
                 st.subheader("Weekly Attendance Percentage")
