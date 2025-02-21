@@ -23,13 +23,11 @@ from data_analysis import (
     calculate_attendance_by_weekday,
     calculate_attendance_by_division,
     calculate_individual_attendance,
-    analyze_entrance_patterns,
     create_employee_summary,
-    calculate_weekday_attendance,
-    calculate_weekly_tue_thu_attendance,
     calculate_tue_thu_attendance_percentage,
     calculate_daily_attendance_counts,
-    calculate_weekly_attendance_counts
+    calculate_weekly_attendance_counts,
+    calculate_period_summary
 )
 
 def load_data():
@@ -111,7 +109,6 @@ def main():
         tue_thu_attendance = calculate_tue_thu_attendance_percentage(combined_df)
         daily_counts = calculate_daily_attendance_counts(combined_df)
         weekly_counts = calculate_weekly_attendance_counts(combined_df)
-        employee_summary = create_employee_summary(combined_df)
         
         # Date range selector in sidebar
         st.sidebar.header("Date Range Selection")
@@ -139,15 +136,20 @@ def main():
         
         # Ensure we have both start and end dates
         if len(selected_dates) == 2:
-            start_date, end_date = selected_dates
+            # Convert date objects to timestamps
+            start_date = pd.Timestamp(selected_dates[0])
+            end_date = pd.Timestamp(selected_dates[1])
             
             # Filter all DataFrames
             filtered_tue_thu = filter_by_date_range(tue_thu_attendance, start_date, end_date)
             filtered_daily = filter_by_date_range(daily_counts, start_date, end_date)
             filtered_weekly = filter_by_date_range(weekly_counts, start_date, end_date, 'week_start')
             
+            # Calculate period summary
+            period_summary = calculate_period_summary(combined_df, start_date, end_date)
+            
             # Create tabs
-            tab1, tab2, tab3 = st.tabs(["Daily Overview", "Weekly Overview", "Employee Details"])
+            tab1, tab2, tab3, tab4 = st.tabs(["Daily Overview", "Weekly Overview", "Period Summary", "Employee Details"])
             
             with tab1:
                 st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
@@ -160,8 +162,6 @@ def main():
                         labels={'percentage': 'Attendance %', 'date': 'Date'}
                     )
                     st.plotly_chart(fig_daily_pct)
-                else:
-                    st.warning("No data available for selected date range")
                 
                 st.subheader("Daily Attendance Counts")
                 if len(filtered_daily) > 0:
@@ -261,8 +261,54 @@ def main():
                 st.dataframe(weekly_display, hide_index=True)
             
             with tab3:
+                st.subheader("Period Summary")
+                if len(period_summary) > 0:
+                    fig_period = px.bar(
+                        period_summary,
+                        x='weekday',
+                        y=['london_hybrid_count', 'other_count'],
+                        title='Average Daily Attendance by Weekday',
+                        labels={
+                            'weekday': 'Day of Week',
+                            'value': 'Average Attendance',
+                            'variable': 'Employee Type'
+                        },
+                        barmode='group'
+                    )
+                    
+                    fig_period.update_traces(
+                        name='London + Hybrid',
+                        selector=dict(name='london_hybrid_count')
+                    )
+                    fig_period.update_traces(
+                        name='Other Employees',
+                        selector=dict(name='other_count')
+                    )
+                    
+                    st.plotly_chart(fig_period)
+                    
+                    # Period summary table
+                    st.subheader("Weekday Averages")
+                    display_cols_period = {
+                        'weekday': 'Day of Week',
+                        'london_hybrid_count': 'Avg. London + Hybrid Count',
+                        'other_count': 'Avg. Other Count',
+                        'attendance_percentage': 'London + Hybrid Attendance %'
+                    }
+                    period_display = period_summary[display_cols_period.keys()].rename(columns=display_cols_period)
+                    st.dataframe(period_display, hide_index=True)
+            
+            with tab4:
                 st.subheader("Employee Attendance Summary")
-                st.dataframe(employee_summary, hide_index=True)
+                
+                # Filter employee summary for selected date range
+                date_filtered_df = combined_df[
+                    (combined_df['date_only'] >= start_date) &
+                    (combined_df['date_only'] <= end_date)
+                ]
+                
+                filtered_employee_summary = create_employee_summary(date_filtered_df)
+                st.dataframe(filtered_employee_summary, hide_index=True)
         
         else:
             st.error("Please select both start and end dates")

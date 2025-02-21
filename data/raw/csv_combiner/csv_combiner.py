@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import os
+import glob
+import pandas as pd
+
+def combine_csv_files(input_dir, output_file, subset_cols=None):
+    """
+    Combines all CSV files in input_dir into one DataFrame,
+    removes duplicate rows, and saves the result to output_file.
+    
+    Parameters:
+      - input_dir: str, directory where the CSV files are located.
+      - output_file: str, path to the output CSV file.
+      - subset_cols: list of str, optional. If provided, duplicates will be
+                     dropped based on these columns.
+    """
+    # Find all CSV files in the input directory
+    csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
+    if not csv_files:
+        print(f"No CSV files found in {input_dir}")
+        return
+
+    # Read each CSV file into a DataFrame
+    df_list = []
+    for file in csv_files:
+        try:
+            df = pd.read_csv(file)
+            df_list.append(df)
+            print(f"Loaded {file} with {len(df)} rows")
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+    # Concatenate all DataFrames
+    combined_df = pd.concat(df_list, ignore_index=True)
+    print(f"\nCombined DataFrame has {len(combined_df)} rows before deduplication.")
+
+    # Drop duplicates (using all columns or a subset if provided)
+    if subset_cols:
+        combined_df = combined_df.drop_duplicates(subset=subset_cols)
+    else:
+        combined_df = combined_df.drop_duplicates()
+    print(f"Combined DataFrame has {len(combined_df)} rows after deduplication.")
+
+    # Save the combined DataFrame to the output CSV file
+    combined_df.to_csv(output_file, index=False)
+    print(f"\nCombined CSV saved to {output_file}")
+
+if __name__ == "__main__":
+    # Define the input directory (where individual CSV files are stored)
+    input_directory = os.path.join("data", "raw", "csv_combiner", "input_files")
+    
+    # Define the output CSV path, which is the file your project currently uses.
+    output_csv = os.path.join("data", "raw", "key_card_access.csv")
+    
+    # Optionally define columns to use for deduplication.
+    # For example, if 'Date/time' and 'User' uniquely identify a record:
+    dedupe_subset = ['Date/time', 'User']
+    
+    combine_csv_files(input_directory, output_csv, subset_cols=dedupe_subset)
