@@ -452,6 +452,42 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
     
     return pd.DataFrame(result)
 
+def calculate_mean_arrival_time(times_series: pd.Series) -> tuple[str, list]:
+    """
+    Calculate mean arrival time while excluding outliers.
+    
+    Args:
+        times_series: Series of datetime.time objects
+        
+    Returns:
+        tuple: (formatted_mean_time, list_of_excluded_times)
+    """
+    # Convert times to minutes since midnight
+    minutes = pd.Series([
+        t.hour * 60 + t.minute 
+        for t in times_series
+    ])
+    
+    # Calculate median
+    median_minutes = minutes.median()
+    
+    # Define outlier threshold (2 hours = 120 minutes)
+    threshold = 120
+    
+    # Identify and exclude outliers
+    is_outlier = abs(minutes - median_minutes) > threshold
+    clean_minutes = minutes[~is_outlier]
+    excluded_times = times_series[is_outlier]
+    
+    if clean_minutes.empty:
+        return None, list(excluded_times)
+    
+    # Calculate mean of non-outlier times
+    mean_minutes = round(clean_minutes.mean())
+    mean_hours = mean_minutes // 60
+    mean_mins = mean_minutes % 60
+    
+    return f"{int(mean_hours):02d}:{int(mean_mins):02d}", list(excluded_times)
 
 def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -529,20 +565,21 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             tue_thu_mask
         ].groupby('date_only')['parsed_time'].min()
         
-        # Convert times to minutes since midnight for calculations
         if not tue_thu_entries.empty:
+            # Calculate mean (excluding outliers) and get list of excluded times
+            mean_entry_str, excluded_times = calculate_mean_arrival_time(tue_thu_entries)
+            
+            # Debug logging for excluded times
+            if excluded_times:
+                print(f"\nExcluded arrival times for {emp_name}:")
+                for time in excluded_times:
+                    print(f"  {time}")
+            
+            # Calculate median (using all times)
             minutes = pd.Series([
                 t.hour * 60 + t.minute 
                 for t in tue_thu_entries
             ])
-            
-            # Calculate mean
-            mean_minutes = round(minutes.mean())
-            mean_hours = mean_minutes // 60
-            mean_mins = mean_minutes % 60
-            mean_entry_str = f"{int(mean_hours):02d}:{int(mean_mins):02d}"
-            
-            # Calculate median
             median_minutes = round(minutes.median())
             median_hours = median_minutes // 60
             median_mins = median_minutes % 60
