@@ -188,13 +188,24 @@ def main():
                     'date': 'Date',
                     'day_of_week': 'Day of Week',
                     'london_hybrid_count': 'London, Hybrid Attendance (#)',
-                    'other_count': 'Other Employees Count',
                     'eligible_london_hybrid': 'London, Hybrid employees (total #)',
                     'london_hybrid_percentage': 'London, Hybrid Attendance (%)',
+                    'other_count': 'Other Employees Count',
                     'total_attendance': 'Total Attendance (#)'
                 }
                 
                 display_df = display_df.rename(columns=column_mapping)
+                # Reorder columns
+                column_order = [
+                    'Date',
+                    'Day of Week',
+                    'London, Hybrid Attendance (#)',
+                    'London, Hybrid employees (total #)',
+                    'London, Hybrid Attendance (%)',
+                    'Other Employees Count',
+                    'Total Attendance (#)'
+                ]
+                display_df = display_df[column_order]
                 st.dataframe(display_df, hide_index=True)
             
             with tab2:
@@ -242,17 +253,27 @@ def main():
                 st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
                 display_cols_weekly = {
                     'week_start': 'Week Starting',
-                    'london_hybrid_avg': 'Avg. London + Hybrid Count',
-                    'other_avg': 'Avg. Other Count',
-                    'avg_eligible_london_hybrid': 'Avg. Eligible London + Hybrid',
-                    'london_hybrid_percentage': 'London + Hybrid %',
-                    'total_avg_attendance': 'Total Avg. Attendance'
+                    'london_hybrid_avg': 'London, Hybrid Attendance (#)',
+                    'avg_eligible_london_hybrid': 'London, Hybrid employees (total #)',
+                    'london_hybrid_percentage': 'London, Hybrid Attendance (%)',
+                    'other_avg': 'Other Employees Count',
+                    'total_avg_attendance': 'Total Attendance (#)'
                 }
                 weekly_display = filtered_weekly[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
                 
                 # Format the week_start column
                 weekly_display['Week Starting'] = weekly_display['Week Starting'].apply(format_date)
                 
+                # Reorder columns
+                weekly_column_order = [
+                    'Week Starting',
+                    'London, Hybrid Attendance (#)',
+                    'London, Hybrid employees (total #)',
+                    'London, Hybrid Attendance (%)',
+                    'Other Employees Count',
+                    'Total Attendance (#)'
+                ]
+                weekly_display = weekly_display[weekly_column_order]
                 st.dataframe(weekly_display, hide_index=True)
             
             with tab3:
