@@ -559,7 +559,25 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     numeric_cols = ['total_days_attended', 'tue_thu_days_attended', 'potential_tue_thu_days', 'attendance_rate']
     result_df[numeric_cols] = result_df[numeric_cols].round(1)
     
-    return result_df
+    # Rename columns to be more readable
+    column_mapping = {
+        'employee_name': 'Employee Name',
+        'days_attended': 'Total Days Attended',
+        'core_days_percentage': 'Core Days Attendance %',
+        'avg_entry_time': 'Average Arrival Time'
+    }
+    
+    # Format percentage columns
+    if 'core_days_percentage' in result_df.columns:
+        result_df['core_days_percentage'] = result_df['core_days_percentage'].apply(
+            lambda x: f"{x:.1f}%" if pd.notnull(x) else None
+        )
+    
+    # Drop potential_tuesday_thu_days column if it exists
+    if 'potential_tuesday_thu_days' in result_df.columns:
+        result_df = result_df.drop('potential_tuesday_thu_days', axis=1)
+    
+    return result_df.rename(columns=column_mapping)
 
 def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate daily attendance percentage, excluding Mon/Fri."""
