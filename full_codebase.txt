@@ -24,6 +24,11 @@ Project root: /Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard
     - ./data/raw/csv_combiner/
       - csv_combiner.py
       - ./data/raw/csv_combiner/input_files/
+        - (1)Jan23-Jul23.csv
+        - (2)Aug23-Jan24.csv
+        - (3)Jan24-Jun24.csv
+        - (4)Jul24-Dec24.csv
+        - (5)Jan25-today.csv
 - ./notebooks/
 - ./src/
   - dashboard.py
@@ -281,8 +286,8 @@ SYSTEM PROMPT / SUMMARY
 Project Context
 You are assisting with a project to analyze office attendance data. The user has two CSV data sources:
 
-Key card CSV (originally 100,000+ rows) with columns for date/time scans and user identifiers. Over the conversation, it evolved to have columns like employee_id, timestamp, and access_point.
-Employee info CSV (800+ rows), containing detailed information about each employee (Employee #, status, hire date, department, etc.), which gets renamed to employee_id for merging.
+Key card CSV (originally 300,000+ rows) with columns for date/time scans and user identifiers. Over the conversation, it evolved to have columns like employee_id, timestamp, and access_point.
+Employee info CSV (1,200+ rows), containing detailed information about each employee (Employee #, status, hire date, department, etc.), which gets renamed to employee_id for merging.
 The goal is to clean, merge, and analyze these datasets. The user also wants a Streamlit dashboard to visualize attendance trends (visit frequency, arrival times, etc.).
 
 Directory Structure & Python Setup
@@ -300,14 +305,14 @@ Analysis: Simple functions in data_analysis.py calculate attendance stats (visit
 Dashboard: A basic Streamlit app (dashboard.py) loads the data, cleans it, merges it, and shows tables/charts.
 Key Issues Encountered & Their Solutions
 
-ModuleNotFoundError: The user hadn’t installed pandas in the correct environment or had a malformed requirements.txt. Solution: ensure the correct environment is activated and the requirements.txt is correct.
+ModuleNotFoundError: The user hadn't installed pandas in the correct environment or had a malformed requirements.txt. Solution: ensure the correct environment is activated and the requirements.txt is correct.
 Column mismatch (KeyError: 'Date/time'): The key card CSV actually had a column named "timestamp" instead of "Date/time". The solution was to match code references to the actual headers (or rename the CSV header).
 Small Test File Instead of Real 100k Rows: The user saw only 100 rows and IDs like 1, 2, 3..., instead of 3-digit IDs. It turned out the CSV might be a test snippet, not the real data. The solution is to confirm the real file (with ~100k rows) is placed in data/raw/ and that the correct path is used.
 NaNs after Merge: Some employee IDs in the key card data do not appear in the employee info CSV. Rows with missing matches lead to NaN values for employee info columns. If desired, an inner join or filtering out invalid IDs can remove those unmatched rows.
 Important Instruction for the LLM
 In any further conversation about this project:
 
-Ask clarifying questions or request to see code/config files whenever something is ambiguous, especially if column names, file paths, or data shapes aren’t confirmed.
+Ask clarifying questions or request to see code/config files whenever something is ambiguous, especially if column names, file paths, or data shapes aren't confirmed.
 Do not rush to provide partial solutions based on assumptions—always confirm details if they are missing or unclear.
 End of Summary
 
@@ -366,6 +371,98 @@ Dashboard (dashboard.py) needs to display metrics with both raw numbers and perc
 All percentage calculations must use the appropriate dynamic denominator methods
 
 The focus of the project has shifted from basic attendance tracking to sophisticated workforce analytics that account for employee lifecycle changes and provide accurate metrics for hybrid work attendance patterns.
+
+ADDENDUM: PROJECT EVOLUTION AND IMPLEMENTATION DETAILS
+Key Data Processing Insights
+Key Card Data Cleaning
+
+Custom ID Extraction: The original regex for extracting employee IDs wasn't capturing all formats. Implemented improved extraction with custom mappings for special cases like "Payne, James" (ID 735) and "Arorra, Aakash" (ID 378).
+Data Type Consistency: Must ensure employee_id is consistently treated as a numeric type throughout processing to avoid merge issues.
+Entrance Location Analysis: The "Where" column provides valuable information about which entrances employees use, potentially useful for building usage analysis.
+
+Employee Information Processing
+
+Employment Period Calculation: Critical to accurately determine when employees were active for correct attendance percentage calculations:
+
+Use Combined hire date 
+For departed employees, use Most recent day worked from Employment Status Date
+Only count employees in denominators when they were actually employed
+
+
+Employee Status Filtering: Need to distinguish active, inactive, and future employees when calculating metrics
+
+Data Merging Challenges
+
+ID Format Mismatches: Employee IDs sometimes have different types/formats between datasets (string vs float)
+Analysis Implementation
+Attendance Calculations
+
+Present/Absent Logic: An employee is considered "present" if they have at least one scan on a given day
+London+Hybrid Employees: Primary focus group defined by Location == "London UK" & Working Status == "Hybrid"
+Dynamic Denominators: When calculating percentages, only include employees who were actually employed on a specific date (between Combined hire date and Most recent day worked)
+Tue-Thu vs Mon/Fri Analysis: Created separate metrics for Tuesday-Thursday (core office days) vs Monday/Friday
+First Entry Time Analysis: Extract earliest scan time per day per employee for arrival time analysis
+
+Period-Based Metrics
+
+Daily Metrics: Track attendance for each calendar day, with separate counts for London+Hybrid and other employees
+Weekly Aggregation: Group data by week (starting Mondays) for trend analysis
+Custom Period Summaries: Calculate metrics for specific timeframes (last 30 days, last 90 days)
+Weekday Patterns: Analyze attendance by day of week to reveal weekly patterns
+
+Dashboard Enhancements
+Interface Improvements
+
+Multi-tab Design: Organized content into logical sections (Overview Summary, Daily, Weekly, and Employee Details)
+Date Range Filtering: Added sidebar date selectors that filter all visualizations and tables simultaneously
+Quick Date Presets: Added buttons for common time periods (last 30 days, last 90 days)
+
+Visualization Types
+
+Line Charts: For attendance percentage trends over time
+Stacked Bar Charts: For comparing London+Hybrid vs other employee attendance
+Dual-Axis Charts: Combining raw counts (bars) with percentages (line) for context
+Detailed Tables: For specific metrics and individual employee analytics
+Interactive Elements: Allow users to explore data through filters and toggles
+
+Performance Considerations
+
+Calculated Metrics: Some analyses (like employee summary) should be recomputed when date filters change
+Debug Information: Added detailed validation output to verify data processing correctness
+Error Handling: Added appropriate error messages when data is unavailable for selected date ranges
+
+Technical Implementation Lessons
+Data Processing
+
+Workflow Organization: Clear separation between loading, cleaning, merging, and analysis functions
+Function Naming: Descriptive names that indicate what each analysis does (e.g., calculate_daily_attendance_percentage)
+Consistent DataFrame Handling: Copy DataFrames before modifying them to avoid unexpected changes
+Date Handling: Consistent use of pandas datetime objects throughout the pipeline
+
+Code Structure
+
+Manual Corrections: Added capability to handle edge cases and data anomalies
+Debugging Output: Strategic print statements to validate data transformations
+Error Handling: Added try/except blocks to provide meaningful error messages
+Function Documentation: Clear docstrings explaining purpose, parameters, and return values
+
+Streamlit Dashboard
+
+State Management: Preserving selected date ranges across tab changes
+Consistent Formatting: Using the same column naming conventions in display tables
+Component Organization: Logical grouping of related visualizations and controls
+User Experience: Informative labels, titles, and tooltips for all visualizations
+
+Future Enhancement Opportunities
+
+Division Analysis: Deeper comparison of attendance patterns across different divisions
+Building Usage Patterns: Analysis of entrance usage and flow through the building
+Tenure-based Segmentation: Compare attendance patterns by employee tenure
+API Interface: Created FastAPI endpoints for programmatic access to attendance data
+Advanced Time Period Analysis: Seasonality detection, holiday impact, and trends over time
+Mobile Optimization: Ensuring dashboard works well on various screen sizes
+
+This implementation offers a comprehensive view of office attendance patterns while accounting for the complexities of hybrid work arrangements and changing employee lifecycles.
 ==== END OF FILE: system_prompt.md ====
 
 ==== START OF FILE: tests/test_data_cleaning.py ====
@@ -657,104 +754,104 @@ Resigned on 21st of July (2 weeks' notice in agreement with Krishna).",,,,,,,,,1
 "Abraham, Daniel",716,Inactive,Male,,12/08/2024,28/05/2024,,Hybrid,,19/11/2024,Terminated,,"Termination (Involuntary)",Performance,No,,,30/09/2024,,Salary,0.01,GBP,Month,Exempt,,05/08/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",0.00,3.50,10.00,20.00,20.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adegboye, Joy",562,Active,Female,,17/10/2023,,,Hybrid,,17/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,17/10/2023,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",1.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adèle, Amelia",236,Active,Female,,16/11/2021,,,Hybrid,,16/11/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Financial Crime Risk Manager","Scott Andrews","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Adeleye, Jadesola",587,Active,Female,,07/11/2023,,,Hybrid,,07/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,3.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Adeleye, Jadesola",587,Active,Female,,07/11/2023,,,Hybrid,,07/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",1.00,8.00,5.00,10.00,154.00,0.00,0.00,3.00,0.00,1.00,5.00,0.00,0.00,0.00
 "Ademiec, Radek",434,Active,Male,,18/04/2023,,,Remote,IC3,29/07/2024,"Long-term Contractor",,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,Poland,Engineering,"Cards US","Senior Software Engineer","Arkadiusz Kondas","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adenekan, Taiwo",462,Inactive,Female,,30/05/2023,,,Hybrid,,29/08/2024,Terminated,,"Resignation (Voluntary)",Performance,"Upon review",Non-Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,10/05/2024,"London UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Christian Porter","Lendable UK",0.00,7.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adeniji, Hannah",333,Inactive,Female,,02/08/2022,,10/05/2024,Hybrid,,30/05/2024,Terminated,,"Resignation (Voluntary)",Role,"Upon review",Non-Regrettable,,,,,,,,,,10/05/2024,"London UK",Operations,"Collections (Ops) UK","Collections Agent - Loans & Auto","Christian Porter","Lendable UK",0.00,2.55,4.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adewole, Zacchaeus",428,Inactive,Male,,11/04/2023,,,Hybrid,,22/08/2023,Terminated,,"Termination (Involuntary)",Performance,No,,"Failed QA 2 months in a row + concerns about behavioral issues. Decided to end his contract. One month notice ",,,,,,,,,12/05/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Tom Earley","Lendable UK",0.00,8.00,10.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adeyemi, Nicole",709,Inactive,Female,,14/05/2024,,31/07/2024,Hybrid,,31/07/2024,Terminated,,"Resignation (Voluntary)",Role,No,Non-Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Eirini Soufla","Lendable UK",0.00,2.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Adeyemo, Fawaz",670,Active,Male,,06/03/2024,,,Hybrid,,06/03/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,15/10/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Cards & Loans","Eirini Soufla","Lendable UK",0.63,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
-"Adjei-Ampofo, Javan",936,Active,,,18/02/2025,,,Hybrid,,18/02/2025,Full-Time,,,,,,,,,,,,,,,18/02/2025,"Kent UK",Operations,"Customer Operations UK","Collections Agent - Loans","Christian Porter","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeyemo, Fawaz",670,Active,Male,,06/03/2024,,,Hybrid,,06/03/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,10/02/2025,"London UK",Operations,"Customer Operations US","Customer Operations Agent - Zable US","Werda Hersi","Lendable UK",0.63,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Adjei-Ampofo, Javan",936,Active,Male,,18/02/2025,,,Hybrid,,18/02/2025,Full-Time,,,,,,,,,,,,,,,18/02/2025,"Kent UK",Operations,"Customer Operations UK","Collections Agent - Loans","Christian Porter","Lendable UK",0.00,6.95,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Adjei, Chante",489,Inactive,Female,,27/06/2023,,,Hybrid,,27/09/2023,Terminated,,"Termination (Involuntary)",,,,,,,,,,,,,27/06/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","Jasmine Aminpour","Lendable UK",0.00,3.00,10.00,10.00,260.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Adofo, Johnson",755,Active,Male,,26/08/2024,,,Hybrid,,26/08/2024,Full-Time,,,,,,,27/08/2024,,Salary,0.01,GBP,Month,Exempt,,30/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Kelly Smith","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Adofo, Johnson",755,Active,Male,,26/08/2024,,,Hybrid,,26/08/2024,Full-Time,,,,,,,27/08/2024,,Salary,0.01,GBP,Month,Exempt,,30/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Kelly Smith","Lendable UK",0.82,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
 "Afagwu-Odunowo, HappyPrincess",640,Active,Female,,05/12/2023,,,Hybrid,,05/12/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,07/03/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Charlotte Harris","Lendable UK",0.00,8.00,5.00,8.00,154.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
 "Afodunrinbi, Yetunde",864,Active,Female,,03/12/2024,,,Hybrid,,03/12/2024,Full-Time,,,,,,,03/12/2024,,Salary,0.10,GBP,Month,Exempt,,03/12/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Agbaje, David",758,Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Charley Pratt","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
+"Agbaje, David",758,Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Charley Pratt","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00,0.00
 "Agostinho Graça, Herberto",451,Inactive,Male,,22/05/2023,,,Remote,,07/03/2024,Terminated,,"Termination (Involuntary)",Performance,,,,,,,,,,,,01/01/2024,"The Netherlands",Engineering,"Central Platform","Staff Software Engineer","Phillip Brown","Lendable UK",0.00,8.00,5.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Agostinho, Lucelia",436,Inactive,Female,,18/04/2023,,,Hybrid,,13/02/2024,Terminated,,"Resignation (Voluntary)","Career Progression",Yes,,"- Wanted to find a role that had more chance of progression which she doesn't feel she has right now
 - Some challenges with QA, concerned she would not pass her probation
 ",,,,,,,,,18/07/2023,"London UK",Operations,"Collections (Ops) UK","Collections Agent","Mandeep Kaur","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Agyemang-Duah, Nana",494,Inactive,Female,,18/07/2023,,02/05/2024,Hybrid,,30/05/2024,Terminated,,"Resignation (Voluntary)","Mental Health","Upon review",Regrettable,,,,,,,,,,20/11/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Eirini Soufla","Lendable UK",0.00,0.69,1.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Ahmed, Faiza",731,Active,Female,,11/06/2024,,,Hybrid,,02/12/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,19/11/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Ahmed, Sairah",496,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,22/12/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","George Thomas","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ahmed, Sairah",496,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,22/12/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","George Thomas","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,1.00,0.00,0.00,0.00
 "Ahmedi, Amtul Noor",401,Inactive,Female,,28/02/2023,,,Hybrid,,28/03/2024,Terminated,,"Resignation (Voluntary)","Personal reasons",No,Non-Regrettable,"Not aligned with how the business works",,,,,,,,,07/06/2023,"London UK",Operations,Complaints,"Head of Complaints","Claire Moore","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Aileru, Lynnex",590,Active,Male,,08/11/2023,,,Hybrid,,08/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,28/10/2024,"Kent UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00
+"Aileru, Lynnex",590,Active,Male,,08/11/2023,,,Hybrid,,08/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,28/10/2024,"Kent UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",1.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00
+"Akatakpo, George",945,Active,Male,,04/03/2025,,,Hybrid,,04/03/2025,Full-Time,,,,,,,,,,,,,,,04/03/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Akewushola, Mo",909,Active,Male,,15/01/2025,,,Hybrid,,15/01/2025,Temp,,,,,,,16/01/2025,,Salary,0.10,GBP,Month,Exempt,,15/01/2025,"London UK",Operations,"Fraud & FinCrime","Financial Crime Investigator","Alexandra Geca","Lendable UK",0.00,7.69,5.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Akhuemokhan, Esther A",895,Active,Female,,14/01/2025,,,,,14/01/2025,Temp,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata",,0.00,7.72,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Akintokunbo, Modupe",888,Active,Female,,14/01/2025,,,Hybrid,,14/01/2025,Full-Time,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Kimberley Radmore","Lendable UK",0.00,7.72,5.00,10.00,154.00,0.00,0.00,1.00,3.50,0.00,0.00,0.00,0.00,0.00
-"Alam, Rifat",672,Active,Male,,21/05/2024,,,Hybrid,IC2,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,04/02/2025,"London UK",Engineering,SuperApp,"React Native Software Engineer","Nick Hannaway","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Akintokunbo, Modupe",888,Active,Female,,14/01/2025,,,Hybrid,,14/01/2025,Full-Time,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Kimberley Radmore","Lendable UK",10.00,7.72,5.00,10.00,154.00,0.00,0.00,1.00,3.50,0.00,0.00,0.00,0.00,0.00
+"Alam, Rifat",672,Active,Male,,21/05/2024,,,Hybrid,IC2,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,04/02/2025,"London UK",Engineering,SuperApp,"React Native Software Engineer","Nick Hannaway","Lendable UK",4.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Alanna, Montana",700,Inactive,Female,,07/05/2024,,14/05/2024,Hybrid,,14/05/2024,Terminated,,"Resignation (Voluntary)",culture,No,Non-Regrettable,,,,,,,,,,07/05/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Alexander, Claire",572,Inactive,,,24/10/2023,,,Hybrid,,01/11/2023,Terminated,,"Resignation (Voluntary)",Other,,,,,,,,,,,,24/10/2023,"London UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Ali, Obaid",367,Inactive,Male,,04/10/2022,,,Hybrid,,29/03/2023,Terminated,,"Termination (Involuntary)",Performance,,,,,,,,,,,,10/10/2022,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Tom Earley","Lendable UK",0.00,8.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Allen, Leanne",473,Active,Female,,06/06/2023,,,Hybrid,,06/06/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,06/06/2023,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Team Lead","Daniel Medcalf","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
-"Allison, Donna",550,Active,Female,,03/10/2023,,,Hybrid,,03/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/09/2024,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Agent - Cards and Loans","Leanne Allen","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,3.00,0.00,0.00,0.00
+"Allison, Donna",550,Active,Female,,03/10/2023,,,Hybrid,,03/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/09/2024,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Agent - Cards and Loans","Leanne Allen","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,2.00,3.00,0.00,0.00,0.00
 "Allotey, Sharon",691,Inactive,Female,,23/04/2024,,,Hybrid,,06/12/2024,Terminated,,"Termination (Involuntary)",Performance,No,,"mutual agreement",04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/04/2024,"London UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,0.00,5.00,10.00,60.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Alokolaro, Elizabeth",230,Active,Female,,26/10/2021,,,Remote,,26/10/2021,"Short-term Contractor",,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Financial Crime Specialist","Amelia Adèle","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alom, Shuayb",962,Active,Male,,04/03/2025,,,Hybrid,,04/03/2025,Temp,,,,,,,,,,,,,,,04/03/2025,"London UK",Operations,Complaints,"Complaints Administrator","Tom Earley","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Amicone, Floriana",757,Active,Female,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"London UK","Credit and Data","Data Science","Data Scientist","Oliver Cairns","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Aminpour, Jasmine",200,Active,Female,,28/06/2021,,,Hybrid,,28/06/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Compliance Monitoring Officer","Michelle Sharpley","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Amodubello, Sinead",740,Inactive,Female,,18/06/2024,,,Hybrid,,20/08/2024,Terminated,,,"End of contract",,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Cards & Loans","Connor Delicata","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Amodubello, Sinead",740,Inactive,Female,,18/06/2024,,,Hybrid,,20/08/2024,Terminated,,,"End of contract",,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Cards & Loans","Connor Delicata","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Anderson, Jake",556,Inactive,Male,,03/10/2023,,,Hybrid,,26/03/2024,Terminated,,"Resignation (Voluntary)","Personal reasons","Upon review",Non-Regrettable,,,,,,,,,,07/03/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Charlotte Harris","Lendable UK",0.00,7.00,2.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Andrade, Nzingha",495,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,"London UK",Operations,"Fraud & FinCrime","Fraud & Disputes Advisor","Garry Rayment","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00
 "Andrews, Scott",192,Active,Male,,18/05/2021,,,Hybrid,,18/05/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Director of Enterprise Risk","Conor McGuire","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Angopa, Bernard",143,Active,Male,,08/07/2019,,,Hybrid,,08/07/2019,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2019,"London UK",Legal,Legal,"General Counsel","Rory McHugh","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
 "Anguelov, Nikolay",157,Inactive,Male,,17/02/2020,,,Hybrid,,28/02/2022,Terminated,,,Other,,,,,,,,,,,,17/02/2020,"London UK","Credit, Data and FinCrime","Collections & Internal Tools","Software Engineer","William Janse van Rensburg","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
-"Anidugbe, Olasubomi",763,Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","George Thomas","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
-"Anscomb, Kylie",471,Active,Female,,06/06/2023,,,Hybrid,,06/06/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,06/05/2024,"Kent UK",Operations,"Collections (Ops) UK","Senior Collections Agent - Loans & Auto","Danielle Munson","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00,0.00
 ... [Truncated after 50 lines]
 
 ==== END OF FILE: data/raw/employee_info.csv ====
 
 ==== START OF FILE: data/raw/key_card_access.csv ====
-"Date/time","User","Details","Event","Department","Where"
-"24/01/2025 23:27:47","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 23:14:32","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 20:51:42","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 20:38:41","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 20:00:25","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 19:20:45","801 Purll, Laura","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 18:36:06","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 18:23:18","761 Clark Hemmings, Andre","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 18:20:00","761 Clark Hemmings, Andre","","Access permitted - token only","BambooHR","Office Entrance West (In)"
-"24/01/2025 17:55:07","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 17:49:34","890 Capello, Giulio","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 17:43:27","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 17:41:44","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
-"24/01/2025 17:38:58","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 17:38:22","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 17:33:05","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 17:20:59","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 17:10:54","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 17:02:36","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 16:48:24","143 Angopa, Bernard","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 16:44:05","701 Szigeti, Ignac","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 16:33:39","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 16:28:46","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 16:26:29","440 Khan, Shahed","","Access permitted - token only","BambooHR","2nd Floor South RH Side (In)"
-"24/01/2025 16:23:57","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 16:21:18","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 15:51:52","673 Latham, Milo","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 15:31:56","190 van Lennep, Harold","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 15:30:53","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 15:29:23","538 Hughes, Alexander","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 15:27:22","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 15:11:13","890 Capello, Giulio","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 15:10:04","890 Capello, Giulio","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 15:08:37","890 Capello, Giulio","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
-"24/01/2025 15:03:08","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 15:01:14","673 Latham, Milo","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 14:43:08","801 Purll, Laura","","Access permitted - token only","BambooHR","Office Entrance West (In)"
-"24/01/2025 14:41:09","668 Stone, William","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 14:32:00","190 van Lennep, Harold","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 14:22:18","264 Anselmetti, Pietro","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 14:16:18","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 14:15:04","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
-"24/01/2025 14:12:43","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 14:09:20","689 Suman, Anushka","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 13:57:14","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Office Entrance West (In)"
-"24/01/2025 13:52:39","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
-"24/01/2025 13:48:32","701 Szigeti, Ignac","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
-"24/01/2025 13:46:56","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
-"24/01/2025 13:40:24","143 Angopa, Bernard","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+Date/time,User,Token number,Where,Event,Details,Department
+25/02/2025 15:07:30,"918 Chrisostomou, Metaxoulla",99946904.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:07:28,"833 Jefferies, Rosie",21542251.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:07:13,"512 Kilian, Michael",41197139.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:06:57,"863 Shaw-Frost, Oli",42175472.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:06:41,"309 Chamberlain, Richard",39194399.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:05:42,"863 Shaw-Frost, Oli",42175472.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:05:19,"787 Evans, Peter",78353339.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:04:54,"734 Carlile, Darren",16604372.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:04:51,"247 Murray, Bethanie",94145226.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:04:35,"906 Ferrabee, Lucy",11614251.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:04:06,"909 Sharaf Akewushola, Mo",46356833.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:03:49,"CHEF Chef, Matos, Angie",73320085.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:03:37,"488 de Grande, Esther",74190211.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:03:08,"609 Channer, Mark",87271512.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:02:21,"304 Fielding, Adam",42824989.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:02:18,"615 Miller, Daniel",55863178.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:02:08,"309 Chamberlain, Richard",39194399.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:02:07,"914 Hussain, Maira",52317029.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:02:03,"167 Wilkinson, Stephen",50575498.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 15:01:56,"393 Davies, Josephine",79864245.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:01:48,"744 Cannon, Laura",56652968.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:01:44,"488 de Grande, Esther",74190211.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:01:33,"195 Thompson, Calum",79853148.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:01:12,"787 Evans, Peter",78353339.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:00:50,"564 Palsikar, Mitali",71622581.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:00:36,"498 Cairns, Oliver",9739965.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:00:26,"136 Erskine, Oliver",97216191.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:00:22,"787 Evans, Peter",78353339.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:00:09,"232 Loi, Jessica",27858412.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:59:44,"808 Neale, James",46731192.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:59:43,"787 Evans, Peter",78353339.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:59:25,"688 Davies, Stuart",69755068.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 14:58:18,"554 Rogers-Jenkins, Arielle",26426112.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:58:14,"564 Palsikar, Mitali",71622581.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:58:04,"147 Denby, Charles",86141069.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:57:56,"615 Miller, Daniel",55863178.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:57:11,"832 Surridge, Scott",75995296.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:56:55,"282 Mikkelsen, Karen",62865800.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 14:56:48,"668 Stone, William",17200144.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:56:36,"132 Longshaw, Alex",85428928.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:56:20,"849 Hindhaugh, Rob",28807229.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 14:56:11,"859 Webb, George",285846.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:56:02,"176 Grigorescu, Gabriel",68062195.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:56:01,"835 Epstein, Ethan",58643657.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 14:55:50,"232 Loi, Jessica",27858412.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:55:40,"206 Price, Matthew",54479979.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:55:33,"799 Nevares, Ori",85090692.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:55:03,"789 Swain, Anthony",50885597.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:53:55,"804 Sultoon, Hugh",73745342.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
 ... [Truncated after 50 lines]
 
 ==== END OF FILE: data/raw/key_card_access.csv ====
@@ -768,7 +865,8 @@ import pandas as pd
 def combine_csv_files(input_dir, output_file, subset_cols=None):
     """
     Combines all CSV files in input_dir into one DataFrame,
-    removes duplicate rows, and saves the result to output_file.
+    removes duplicate rows, sorts by date/time (newest first),
+    and saves the result to output_file, preserving the original format.
     
     Parameters:
       - input_dir: str, directory where the CSV files are located.
@@ -781,7 +879,7 @@ def combine_csv_files(input_dir, output_file, subset_cols=None):
     if not csv_files:
         print(f"No CSV files found in {input_dir}")
         return
-
+    
     # Read each CSV file into a DataFrame
     df_list = []
     for file in csv_files:
@@ -791,36 +889,321 @@ def combine_csv_files(input_dir, output_file, subset_cols=None):
             print(f"Loaded {file} with {len(df)} rows")
         except Exception as e:
             print(f"Error reading {file}: {e}")
-
+    
     # Concatenate all DataFrames
     combined_df = pd.concat(df_list, ignore_index=True)
     print(f"\nCombined DataFrame has {len(combined_df)} rows before deduplication.")
-
+    
     # Drop duplicates (using all columns or a subset if provided)
     if subset_cols:
         combined_df = combined_df.drop_duplicates(subset=subset_cols)
     else:
         combined_df = combined_df.drop_duplicates()
     print(f"Combined DataFrame has {len(combined_df)} rows after deduplication.")
-
+    
+    # Convert 'Date/time' to datetime for proper sorting
+    # The format matches your data: "31/07/2023 22:48:58"
+    combined_df['datetime_for_sorting'] = pd.to_datetime(combined_df['Date/time'], format="%d/%m/%Y %H:%M:%S")
+    
+    # Sort by Date/time in descending order (newest first)
+    combined_df = combined_df.sort_values(by='datetime_for_sorting', ascending=False)
+    
+    # Remove the temporary sorting column
+    combined_df = combined_df.drop('datetime_for_sorting', axis=1)
+    
     # Save the combined DataFrame to the output CSV file
     combined_df.to_csv(output_file, index=False)
     print(f"\nCombined CSV saved to {output_file}")
 
 if __name__ == "__main__":
     # Define the input directory (where individual CSV files are stored)
-    input_directory = os.path.join("data", "raw", "csv_combiner", "input_files")
+    # Using absolute path to avoid relative path issues
+    input_directory = "/Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard/data/raw/csv_combiner/input_files"
     
     # Define the output CSV path, which is the file your project currently uses.
-    output_csv = os.path.join("data", "raw", "key_card_access.csv")
+    output_csv = "/Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard/data/raw/key_card_access.csv"
     
     # Optionally define columns to use for deduplication.
     # For example, if 'Date/time' and 'User' uniquely identify a record:
     dedupe_subset = ['Date/time', 'User']
     
     combine_csv_files(input_directory, output_csv, subset_cols=dedupe_subset)
-
 ==== END OF FILE: data/raw/csv_combiner/csv_combiner.py ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(1)Jan23-Jul23.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"31/07/2023 22:48:58","Auditing contractor","50864374","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 22:45:13","Auditing contractor","50864374","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 22:45:06","Auditing contractor","50864374","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 22:40:17","Auditing contractor","50864374","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 21:17:00","CLEANER Cleaner, Nunez, Eduardo","13180794","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 21:16:48","CLEANER Cleaner, Nunez, Eduardo","13180794","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 21:11:43","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 20:50:01","Auditing contractor","50864374","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 20:43:05","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:39:07","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:32:26","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:32:13","Auditing contractor","50864374","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 20:30:27","CLEANER Cleaner, Nunez, Eduardo","13180794","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:30:14","CLEANER Cleaner, Nunez, Eduardo","13180794","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 20:24:46","Auditing contractor","50864374","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 19:17:20","437 Thomas, George","55918336","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 19:12:47","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 19:12:14","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 19:12:07","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 18:36:55","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 18:30:22","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 18:29:37","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 18:29:17","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 18:06:34","263 Swarbreck, Cosmo","32953776","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 18:06:26","263 Swarbreck, Cosmo","32953776","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 18:05:25","263 Swarbreck, Cosmo","32953776","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 17:56:37","495 Andrade, Nzingha","42873158","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 17:54:23","437 Thomas, George","55918336","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 17:27:03","505 Magill, Harry","15598985","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 17:19:21","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 17:06:08","488 de Grande, Esther","22019347","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 17:03:37","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 17:03:29","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:59:53","136 Erskine, Oliver","97216191","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 16:59:48","136 Erskine, Oliver","97216191","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:59:14","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 16:38:20","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:37:44","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:36:47","496 Ahmed, Sairah","46066664","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 16:34:16","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:13:42","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:11:00","195 Thompson, Calum","57967540","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 16:10:05","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 15:33:00","505 Magill, Harry","15598985","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 15:17:44","136 Erskine, Oliver","97216191","Office Entrance West (In)","Access permitted - token only",""
+"31/07/2023 15:08:58","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 14:58:11","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 14:45:06","263 Swarbreck, Cosmo","32953776","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 14:33:59","263 Swarbreck, Cosmo","32953776","Lift Lobby South (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(1)Jan23-Jul23.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(2)Aug23-Jan24.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"31/01/2024 22:43:28","CLEANER Cleaner, Nunez, Eduardo","13180794","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 22:07:46","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:51:43","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:51:33","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:51:17","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 21:49:53","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:47:03","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:43:50","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:34:25","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:34:18","CLEANER Cesar, Cleaner","79743897","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 21:29:34","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:28:50","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:28:43","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 21:21:55","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 20:46:27","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 20:45:50","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 20:45:41","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 20:19:27","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 20:06:46","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 20:02:34","CLEANER Cleaner, Nunez, Eduardo","13180794","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 19:59:54","308 Xu, Maggie","23799693","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 19:32:01","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:31:50","CLEANER Cesar, Cleaner","79743897","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 19:24:43","131 Nsamba, Sandra","85132049","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 19:12:54","519 Papadakos, Georgios","18579132","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:12:45","519 Papadakos, Georgios","18579132","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 19:08:33","CLEANER Cleaner, Nunez, Eduardo","13180794","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 19:08:03","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 19:07:28","327 Kennedy, Morgan","93351505","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:07:22","327 Kennedy, Morgan","93351505","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 19:04:31","327 Kennedy, Morgan","93351505","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 19:02:49","327 Kennedy, Morgan","93351505","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:02:42","327 Kennedy, Morgan","93351505","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 18:56:35","563 Rear, Caio","42058128","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:56:27","563 Rear, Caio","42058128","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 18:48:51","112 du Jeu, Penelope","78994024","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:47:20","158 Longworth, Esther","41807189","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:47:15","158 Longworth, Esther","41807189","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 18:46:36","112 du Jeu, Penelope","78994024","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 18:44:30","288 Snell, John","29019540","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:37:06","158 Longworth, Esther","41807189","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:30:46","488 de Grande, Esther","22019347","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/01/2024 18:28:26","199 Petzer, Carl","38043269","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:26:48","208 Kalkhoven, Brook","36026242","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:24:05","516 Gomar, Dominic","29847650","Office Entrance West (In)","Access permitted - token only",""
+"31/01/2024 18:12:09","559 Desai, Nicolaus","51277005","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 18:07:15","106 van Strydonck, Livia","50423061","2nd Floor South RH Side (In)","Access permitted - token only",""
+"31/01/2024 18:06:45","425 Kim, Albert","26996860","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:06:44","420 Hicks, James","21316335","2nd Floor South LH Side (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(2)Aug23-Jan24.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(3)Jan24-Jun24.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"28/06/2024 22:11:15","CLEANER Cesar, Cleaner","79743897","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 21:54:39","CLEANER Cesar, Cleaner","79743897","Lift Lobby North (In)","Access permitted - token only",""
+"28/06/2024 20:40:57","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 19:19:12","Contractor Pass, Lendable","17343254","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 18:05:32","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 18:04:26","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"28/06/2024 17:56:40","397 Gordon, Richard","92279292","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 17:55:33","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 17:24:29","Visitor Pass 1","76358299","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 17:08:56","205 Craig, Richard","39223341","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 17:00:16","143 Angopa, Bernard","82191387","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 16:42:00","352 Schroeder, Michal","24977878","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 16:33:55","Visitor Pass 1","76358299","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 16:31:59","131 Nsamba, Sandra","85132049","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 16:26:03","738 Shakespeare, Mark","72756871","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 16:18:33","384 Rosapep, Maria","92367799","2nd Floor South RH Side (In)","Access permitted - token only",""
+"28/06/2024 16:13:50","597 Chan, Aaron","72595213","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 16:12:15","721 Rahman, Rashidur","55831751","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:56:50","689 Suman, Anushka","12798371","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:54:30","689 Suman, Anushka","12798371","2nd Floor South RH Side (In)","Access permitted - token only",""
+"28/06/2024 15:54:22","205 Craig, Richard","39223341","Lift Lobby North (In)","Access permitted - token only",""
+"28/06/2024 15:52:35","Visitor Pass 1","76358299","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 15:49:45","397 Gordon, Richard","92279292","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:43:59","721 Rahman, Rashidur","55831751","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:37:04","597 Chan, Aaron","72595213","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:22:10","Visitor Pass 1","76358299","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 15:22:08","738 Shakespeare, Mark","72756871","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 15:11:51","352 Schroeder, Michal","24977878","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 15:10:21","352 Schroeder, Michal","24977878","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 15:07:18","352 Schroeder, Michal","24977878","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 14:38:07","498 Cairns, Oliver","65626103","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 14:21:05","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 14:11:13","488 de Grande, Esther","22019347","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 14:10:17","Visitor Pass 3","93825648","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 14:09:07","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 14:06:56","738 Shakespeare, Mark","72756871","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 14:05:41","397 Gordon, Richard","92279292","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:49:13","721 Rahman, Rashidur","55831751","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 13:45:34","205 Craig, Richard","39223341","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:31:27","488 de Grande, Esther","22019347","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 13:29:05","Visitor Pass 1","76358299","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 13:28:22","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 13:28:09","Visitor Pass 1","76358299","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 13:28:07","488 de Grande, Esther","22019347","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:25:30","488 de Grande, Esther","22019347","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:22:21","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 13:21:27","397 Gordon, Richard","92279292","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:06:54","143 Angopa, Bernard","82191387","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 13:03:54","Visitor Pass 1","76358299","Lift Lobby South (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(3)Jan24-Jun24.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(4)Jul24-Dec24.csv ====
+"Date/time","User","Details","Event","Department","Where"
+"31/12/2024 17:26:57","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 16:53:39","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 15:13:52","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"31/12/2024 14:56:50","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 14:55:40","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"31/12/2024 14:43:05","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"31/12/2024 14:41:21","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"31/12/2024 14:00:17","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 13:50:26","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"31/12/2024 13:34:20","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 12:37:34","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 12:31:01","498 Cairns, Oliver","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"31/12/2024 10:48:18","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 08:16:33","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"31/12/2024 08:07:35","SECURITY Security Pass, Server Room","","Access permitted - token only","Telephone House Managment","Comms Room (In)"
+"31/12/2024 08:07:23","SECURITY Security Pass, Server Room","Invalid access","Access denied - invalid token","Telephone House Managment","Office Entrance West (In)"
+"30/12/2024 22:47:22","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 21:21:40","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 20:01:08","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 20:00:00","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 19:48:55","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 19:09:28","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 18:02:48","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 18:01:26","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 17:08:36","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 17:05:31","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 15:42:41","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 15:02:07","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 13:40:52","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 13:32:40","676 Dufour, Josiane","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 12:54:02","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 12:43:33","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 12:20:49","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 11:30:22","498 Cairns, Oliver","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 11:29:07","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 11:21:44","488 de Grande, Esther","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"30/12/2024 11:12:39","498 Cairns, Oliver","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 10:34:25","488 de Grande, Esther","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 10:23:42","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 09:46:51","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"30/12/2024 09:46:39","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 09:45:17","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 09:10:54","488 de Grande, Esther","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"27/12/2024 20:16:13","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"27/12/2024 16:17:58","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"27/12/2024 16:00:24","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"27/12/2024 14:07:57","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"27/12/2024 12:11:57","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"27/12/2024 08:57:51","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(4)Jul24-Dec24.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(5)Jan25-today.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"25/02/2025 15:07:30","918 Chrisostomou, Metaxoulla","99946904","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:07:28","833 Jefferies, Rosie","21542251","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 15:07:13","512 Kilian, Michael","41197139","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:06:57","863 Shaw-Frost, Oli","42175472","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:06:41","309 Chamberlain, Richard","39194399","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:05:42","863 Shaw-Frost, Oli","42175472","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:05:19","787 Evans, Peter","78353339","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:04:54","734 Carlile, Darren","16604372","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 15:04:51","247 Murray, Bethanie","94145226","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:04:35","906 Ferrabee, Lucy","11614251","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:04:06","909 Sharaf Akewushola, Mo","46356833","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:03:49","CHEF Chef, Matos, Angie","73320085","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:03:37","488 de Grande, Esther","74190211","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:03:08","609 Channer, Mark","87271512","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:02:21","304 Fielding, Adam","42824989","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:02:18","615 Miller, Daniel","55863178","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:02:08","309 Chamberlain, Richard","39194399","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:02:07","914 Hussain, Maira","52317029","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:02:03","167 Wilkinson, Stephen","50575498","2nd Floor South RH Side (In)","Access permitted - token only",""
+"25/02/2025 15:01:56","393 Davies, Josephine","79864245","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 15:01:48","744 Cannon, Laura","56652968","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 15:01:44","488 de Grande, Esther","74190211","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:01:33","195 Thompson, Calum","79853148","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 15:01:12","787 Evans, Peter","78353339","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:00:50","564 Palsikar, Mitali","71622581","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 15:00:36","498 Cairns, Oliver","9739965","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:00:26","136 Erskine, Oliver","97216191","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:00:22","787 Evans, Peter","78353339","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:00:09","232 Loi, Jessica","27858412","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:59:44","808 Neale, James","46731192","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:59:43","787 Evans, Peter","78353339","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 14:59:25","688 Davies, Stuart","69755068","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 14:58:18","554 Rogers-Jenkins, Arielle","26426112","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 14:58:14","564 Palsikar, Mitali","71622581","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:58:04","147 Denby, Charles","86141069","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 14:57:56","615 Miller, Daniel","55863178","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:57:11","832 Surridge, Scott","75995296","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 14:56:55","282 Mikkelsen, Karen","62865800","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 14:56:48","668 Stone, William","17200144","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:56:36","132 Longshaw, Alex","85428928","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 14:56:20","849 Hindhaugh, Rob","28807229","2nd Floor South RH Side (In)","Access permitted - token only",""
+"25/02/2025 14:56:11","859 Webb, George","285846","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 14:56:02","176 Grigorescu, Gabriel","68062195","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 14:56:01","835 Epstein, Ethan","58643657","2nd Floor South RH Side (In)","Access permitted - token only",""
+"25/02/2025 14:55:50","232 Loi, Jessica","27858412","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 14:55:40","206 Price, Matthew","54479979","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:55:33","799 Nevares, Ori","85090692","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 14:55:03","789 Swain, Anthony","50885597","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:53:55","804 Sultoon, Hugh","73745342","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(5)Jan25-today.csv ====
 
 ==== START OF FILE: src/dashboard.py ====
 import streamlit as st
@@ -1001,32 +1384,6 @@ def main():
                     )
                     st.plotly_chart(fig_daily_pct)
                 
-                st.subheader("Daily Attendance Counts")
-                if len(filtered_daily) > 0:
-                    fig_daily_counts = px.bar(
-                        filtered_daily,
-                        x='date',
-                        y=['london_hybrid_count', 'other_count'],
-                        title='Daily Attendance by Employee Type',
-                        labels={
-                            'date': 'Date',
-                            'value': 'Number of Employees',
-                            'variable': 'Employee Type'
-                        },
-                        barmode='stack'
-                    )
-                    
-                    fig_daily_counts.update_traces(
-                        name='London + Hybrid',
-                        selector=dict(name='london_hybrid_count')
-                    )
-                    fig_daily_counts.update_traces(
-                        name='Other Employees',
-                        selector=dict(name='other_count')
-                    )
-                    
-                    st.plotly_chart(fig_daily_counts)
-                
                 # Daily details table
                 st.subheader("Daily Attendance Details")
                 
@@ -1038,18 +1395,46 @@ def main():
                 column_mapping = {
                     'date': 'Date',
                     'day_of_week': 'Day of Week',
-                    'london_hybrid_count': 'London + Hybrid Present',
-                    'other_count': 'Other Employees Present',
-                    'eligible_london_hybrid': 'Total Eligible London + Hybrid',
-                    'london_hybrid_percentage': 'London + Hybrid Attendance %',
-                    'total_attendance': 'Total Attendance'
+                    'london_hybrid_count': 'London, Hybrid Attendance (#)',
+                    'eligible_london_hybrid': 'London, Hybrid (total #)',
+                    'london_hybrid_percentage': 'London, Hybrid Attendance (%)',
+                    'other_count': 'Non-London, Hybrid Attendance (#)',
+                    'total_attendance': 'Total Attendance (#)'
                 }
                 
                 display_df = display_df.rename(columns=column_mapping)
-                st.dataframe(display_df, hide_index=True)
+                
+                # Format numbers while keeping original values
+                count_columns = [
+                    'London, Hybrid Attendance (#)',
+                    'London, Hybrid (total #)',
+                    'Non-London, Hybrid Attendance (#)',
+                    'Total Attendance (#)'
+                ]
+                percentage_columns = ['London, Hybrid Attendance (%)']
+                
+                # Create a styled version for display
+                styled_df = display_df.copy()
+                for col in count_columns:
+                    styled_df[col] = styled_df[col].apply(lambda x: f"{round(x):,}")
+                for col in percentage_columns:
+                    styled_df[col] = styled_df[col].apply(lambda x: f"{x:.1f}%")
+                
+                # Reorder columns
+                column_order = [
+                    'Date',
+                    'Day of Week',
+                    'London, Hybrid Attendance (#)',
+                    'London, Hybrid (total #)',
+                    'London, Hybrid Attendance (%)',
+                    'Non-London, Hybrid Attendance (#)',
+                    'Total Attendance (#)'
+                ]
+                styled_df = styled_df[column_order]
+                st.dataframe(styled_df, hide_index=True)
             
             with tab2:
-                st.subheader("Weekly Attendance Percentage")
+                st.subheader("Weekly Attendance Percentage (Tuesday-Thursday only)")
                 if len(filtered_weekly) > 0:
                     fig_weekly_pct = px.line(
                         filtered_weekly,
@@ -1063,7 +1448,7 @@ def main():
                     )
                     st.plotly_chart(fig_weekly_pct)
                 
-                st.subheader("Weekly Attendance Counts")
+                st.subheader("Weekly Attendance Counts (Tuesday-Thursday only)")
                 if len(filtered_weekly) > 0:
                     fig_weekly_counts = px.bar(
                         filtered_weekly,
@@ -1090,16 +1475,48 @@ def main():
                     st.plotly_chart(fig_weekly_counts)
                 
                 # Weekly details table
-                st.subheader("Weekly Attendance Details")
+                st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
                 display_cols_weekly = {
                     'week_start': 'Week Starting',
-                    'london_hybrid_avg': 'Avg. London + Hybrid Count',
-                    'other_avg': 'Avg. Other Count',
-                    'london_hybrid_percentage': 'London + Hybrid %',
-                    'total_avg_attendance': 'Total Avg. Attendance'
+                    'london_hybrid_avg': 'Avg. London, Hybrid Attendance (#)',
+                    'avg_eligible_london_hybrid': 'Avg. London, Hybrid (total #)',
+                    'london_hybrid_percentage': 'Avg. London, Hybrid Attendance (%)',
+                    'other_avg': 'Avg. Non-London, Hybrid Attendance (#)',
+                    'total_avg_attendance': 'Avg. Total Attendance (#)'
                 }
                 weekly_display = filtered_weekly[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
-                st.dataframe(weekly_display, hide_index=True)
+                
+                # Format the week_start column
+                weekly_display['Week Starting'] = weekly_display['Week Starting'].apply(format_date)
+                
+                # Create a styled version for display
+                styled_weekly = weekly_display.copy()
+                
+                # Format numbers
+                count_columns = [
+                    'Avg. London, Hybrid Attendance (#)',
+                    'Avg. London, Hybrid (total #)',
+                    'Avg. Non-London, Hybrid Attendance (#)',
+                    'Avg. Total Attendance (#)'
+                ]
+                percentage_columns = ['Avg. London, Hybrid Attendance (%)']
+                
+                for col in count_columns:
+                    styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{round(x):,}")
+                for col in percentage_columns:
+                    styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{x:.1f}%")
+                
+                # Reorder columns
+                weekly_column_order = [
+                    'Week Starting',
+                    'Avg. London, Hybrid Attendance (#)',
+                    'Avg. London, Hybrid (total #)',
+                    'Avg. London, Hybrid Attendance (%)',
+                    'Avg. Non-London, Hybrid Attendance (#)',
+                    'Avg. Total Attendance (#)'
+                ]
+                styled_weekly = styled_weekly[weekly_column_order]
+                st.dataframe(styled_weekly, hide_index=True)
             
             with tab3:
                 st.subheader("Period Summary")
@@ -1137,7 +1554,20 @@ def main():
                         'attendance_percentage': 'London + Hybrid Attendance %'
                     }
                     period_display = period_summary[display_cols_period.keys()].rename(columns=display_cols_period)
-                    st.dataframe(period_display, hide_index=True)
+                    
+                    # Create styled version
+                    styled_period = period_display.copy()
+                    
+                    # Format numbers
+                    count_columns = ['Avg. London + Hybrid Count', 'Avg. Other Count']
+                    percentage_columns = ['London + Hybrid Attendance %']
+                    
+                    for col in count_columns:
+                        styled_period[col] = styled_period[col].apply(lambda x: f"{round(x):,}")
+                    for col in percentage_columns:
+                        styled_period[col] = styled_period[col].apply(lambda x: f"{x:.1f}%")
+                    
+                    st.dataframe(styled_period, hide_index=True)
             
             with tab4:
                 st.subheader("Employee Attendance Summary")
@@ -1148,7 +1578,10 @@ def main():
                     (combined_df['date_only'] <= end_date)
                 ]
                 
+                # Get employee summary with friendly column headers
                 filtered_employee_summary = create_employee_summary(date_filtered_df)
+                
+                # Display the table (no additional renaming needed as it's done in create_employee_summary)
                 st.dataframe(filtered_employee_summary, hide_index=True)
         
         else:
@@ -1618,6 +2051,45 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
     
     return pd.DataFrame(result)
 
+def calculate_mean_arrival_time(times_series: pd.Series) -> tuple[str, list]:
+    """
+    Calculate mean arrival time while excluding outliers.
+    
+    Args:
+        times_series: Series of datetime.time objects
+        
+    Returns:
+        tuple: (formatted_mean_time, list_of_excluded_times)
+    """
+    if times_series.empty:
+        return None, []
+        
+    # Convert times to minutes since midnight
+    minutes = pd.Series([
+        t.hour * 60 + t.minute 
+        for t in times_series
+    ], index=times_series.index)
+    
+    # Calculate median
+    median_minutes = minutes.median()
+    
+    # Define outlier threshold (2 hours = 120 minutes)
+    threshold = 120
+    
+    # Identify and exclude outliers
+    is_outlier = abs(minutes - median_minutes) > threshold
+    clean_minutes = minutes[~is_outlier]
+    excluded_times = times_series[is_outlier]
+    
+    if clean_minutes.empty:
+        return None, list(excluded_times)
+    
+    # Calculate mean of non-outlier times
+    mean_minutes = round(clean_minutes.mean())
+    mean_hours = mean_minutes // 60
+    mean_mins = mean_minutes % 60
+    
+    return f"{int(mean_hours):02d}:{int(mean_mins):02d}", list(excluded_times)
 
 def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -1689,24 +2161,35 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         # Count potential Tue-Thu during employment
         employed_tue_thu = len(employed_dates[employed_dates.dayofweek.isin([1, 2, 3])])
         
-        # Calculate average entry time for Tue-Thu
+        # Calculate mean and median entry times for Tue-Thu
         tue_thu_entries = emp_data[
             (emp_data['present'] == 'Yes') & 
             tue_thu_mask
         ].groupby('date_only')['parsed_time'].min()
         
-        avg_entry_time = (
-            tue_thu_entries.dt.hour + 
-            tue_thu_entries.dt.minute / 60
-        ).mean()
-        
-        # Convert average entry time to string format
-        if pd.notna(avg_entry_time):
-            hours = int(avg_entry_time)
-            minutes = int((avg_entry_time % 1) * 60)
-            avg_entry_str = f"{hours:02d}:{minutes:02d}"
+        if not tue_thu_entries.empty:
+            # Calculate mean (excluding outliers) and get list of excluded times
+            mean_entry_str, excluded_times = calculate_mean_arrival_time(tue_thu_entries)
+            
+            # Debug logging for excluded times
+            if excluded_times:
+                print(f"\nExcluded arrival times for {emp_name}:")
+                for time in excluded_times:
+                    print(f"  {time}")
+            
+            # Calculate median (using all times)
+            minutes = pd.Series([
+                t.hour * 60 + t.minute 
+                for t in tue_thu_entries
+            ], index=tue_thu_entries.index)
+            
+            median_minutes = round(minutes.median())
+            median_hours = median_minutes // 60
+            median_mins = median_minutes % 60
+            median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
         else:
-            avg_entry_str = None
+            mean_entry_str = None
+            median_entry_str = None
         
         results.append({
             'employee_id': emp_id,
@@ -1714,7 +2197,8 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             'total_days_attended': attended_days,
             'tue_thu_days_attended': attended_tue_thu,
             'potential_tue_thu_days': employed_tue_thu,
-            'avg_entry_time': avg_entry_str,
+            'mean_arrival_time': mean_entry_str,
+            'median_arrival_time': median_entry_str,
             'attendance_rate': round(attended_tue_thu / employed_tue_thu * 100, 1) if employed_tue_thu > 0 else 0
         })
     
@@ -1727,21 +2211,20 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     
     # Rename columns to be more readable
     column_mapping = {
-        'employee_name': 'Employee Name',
-        'days_attended': 'Total Days Attended',
-        'core_days_percentage': 'Core Days Attendance %',
-        'avg_entry_time': 'Average Arrival Time'
+        'employee_id': 'Employee ID',
+        'name': 'Employee Name',
+        'total_days_attended': 'Total Days Attended',
+        'tue_thu_days_attended': 'Tuesday-Thursday Days',
+        'potential_tue_thu_days': 'Potential Office Days',
+        'mean_arrival_time': 'Mean Arrival Time',
+        'median_arrival_time': 'Median Arrival Time',
+        'attendance_rate': 'Attendance Rate (%)'
     }
     
     # Format percentage columns
-    if 'core_days_percentage' in result_df.columns:
-        result_df['core_days_percentage'] = result_df['core_days_percentage'].apply(
-            lambda x: f"{x:.1f}%" if pd.notnull(x) else None
-        )
-    
-    # Drop potential_tuesday_thu_days column if it exists
-    if 'potential_tuesday_thu_days' in result_df.columns:
-        result_df = result_df.drop('potential_tuesday_thu_days', axis=1)
+    result_df['attendance_rate'] = result_df['attendance_rate'].apply(
+        lambda x: f"{x:.1f}%" if pd.notnull(x) else None
+    )
     
     return result_df.rename(columns=column_mapping)
 
@@ -1851,7 +2334,10 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(daily_counts)
 
 def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate weekly attendance counts split by employee type."""
+    """
+    Calculate weekly attendance counts split by employee type.
+    Only considers Tuesday, Wednesday, and Thursday.
+    """
     df = df.copy()
     
     # Add week start date (Monday)
@@ -1860,9 +2346,41 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     weekly_counts = []
     for week_start in sorted(df['week_start'].unique()):
         week_end = week_start + pd.Timedelta(days=6)
-        week_mask = (df['date_only'] >= week_start) & (df['date_only'] <= week_end)
         
-        # Consider employment dates
+        # Updated week_mask to only include Tue-Thu
+        week_mask = (
+            (df['date_only'] >= week_start) & 
+            (df['date_only'] <= week_end) &
+            (df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday']))
+        )
+        
+        # Get daily eligible counts for Tue-Thu
+        daily_eligible = []
+        for date in pd.date_range(week_start, week_end):
+            if date.strftime('%A') in ['Tuesday', 'Wednesday', 'Thursday']:
+                # Consider employment dates
+                active_mask = (
+                    (pd.to_datetime(df['Combined hire date']) <= date) &
+                    (
+                        (df['Most recent day worked'].isna()) |
+                        (pd.to_datetime(df['Most recent day worked']) >= date)
+                    )
+                )
+                
+                london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+                
+                # Count eligible employees for this day
+                eligible_count = df[
+                    active_mask &
+                    london_hybrid_mask
+                ]['employee_id'].nunique()
+                
+                daily_eligible.append(eligible_count)
+        
+        # Calculate average eligible employees across Tue-Thu
+        avg_eligible = round(sum(daily_eligible) / len(daily_eligible), 1) if daily_eligible else 0
+        
+        # Consider employment dates for the week
         active_mask = (
             (pd.to_datetime(df['Combined hire date']) <= week_end) &
             (
@@ -1889,28 +2407,21 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             (df['present'] == 'Yes')
         ].groupby('date_only')['employee_id'].nunique()
         
-        # Get total eligible London+Hybrid employees
-        total_eligible_london_hybrid = df[
-            week_mask &
-            active_mask &
-            london_hybrid_mask
-        ]['employee_id'].nunique()
-        
         # Calculate averages
         london_hybrid_avg = london_hybrid_daily.mean() if not london_hybrid_daily.empty else 0
         others_avg = others_daily.mean() if not others_daily.empty else 0
         
-        # Calculate attendance percentage
+        # Calculate attendance percentage using average eligible employees
         attendance_percentage = (
-            (london_hybrid_avg / total_eligible_london_hybrid * 100)
-            if total_eligible_london_hybrid > 0 else 0
+            (london_hybrid_avg / avg_eligible * 100)
+            if avg_eligible > 0 else 0
         )
         
         weekly_counts.append({
             'week_start': week_start,
             'london_hybrid_avg': round(london_hybrid_avg, 1),
             'other_avg': round(others_avg, 1),
-            'eligible_london_hybrid': total_eligible_london_hybrid,
+            'avg_eligible_london_hybrid': avg_eligible,  # New field
             'london_hybrid_percentage': round(attendance_percentage, 1),
             'total_avg_attendance': round(london_hybrid_avg + others_avg, 1)
         })

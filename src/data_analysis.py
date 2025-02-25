@@ -462,11 +462,14 @@ def calculate_mean_arrival_time(times_series: pd.Series) -> tuple[str, list]:
     Returns:
         tuple: (formatted_mean_time, list_of_excluded_times)
     """
+    if times_series.empty:
+        return None, []
+        
     # Convert times to minutes since midnight
     minutes = pd.Series([
         t.hour * 60 + t.minute 
         for t in times_series
-    ])
+    ], index=times_series.index)
     
     # Calculate median
     median_minutes = minutes.median()
@@ -579,7 +582,8 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             minutes = pd.Series([
                 t.hour * 60 + t.minute 
                 for t in tue_thu_entries
-            ])
+            ], index=tue_thu_entries.index)
+            
             median_minutes = round(minutes.median())
             median_hours = median_minutes // 60
             median_mins = median_minutes % 60

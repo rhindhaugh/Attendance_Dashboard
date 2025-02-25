@@ -195,6 +195,23 @@ def main():
                 }
                 
                 display_df = display_df.rename(columns=column_mapping)
+                
+                # Format numbers while keeping original values
+                count_columns = [
+                    'London, Hybrid Attendance (#)',
+                    'London, Hybrid (total #)',
+                    'Non-London, Hybrid Attendance (#)',
+                    'Total Attendance (#)'
+                ]
+                percentage_columns = ['London, Hybrid Attendance (%)']
+                
+                # Create a styled version for display
+                styled_df = display_df.copy()
+                for col in count_columns:
+                    styled_df[col] = styled_df[col].apply(lambda x: f"{round(x):,}")
+                for col in percentage_columns:
+                    styled_df[col] = styled_df[col].apply(lambda x: f"{x:.1f}%")
+                
                 # Reorder columns
                 column_order = [
                     'Date',
@@ -205,8 +222,8 @@ def main():
                     'Non-London, Hybrid Attendance (#)',
                     'Total Attendance (#)'
                 ]
-                display_df = display_df[column_order]
-                st.dataframe(display_df, hide_index=True)
+                styled_df = styled_df[column_order]
+                st.dataframe(styled_df, hide_index=True)
             
             with tab2:
                 st.subheader("Weekly Attendance Percentage (Tuesday-Thursday only)")
@@ -264,6 +281,23 @@ def main():
                 # Format the week_start column
                 weekly_display['Week Starting'] = weekly_display['Week Starting'].apply(format_date)
                 
+                # Create a styled version for display
+                styled_weekly = weekly_display.copy()
+                
+                # Format numbers
+                count_columns = [
+                    'Avg. London, Hybrid Attendance (#)',
+                    'Avg. London, Hybrid (total #)',
+                    'Avg. Non-London, Hybrid Attendance (#)',
+                    'Avg. Total Attendance (#)'
+                ]
+                percentage_columns = ['Avg. London, Hybrid Attendance (%)']
+                
+                for col in count_columns:
+                    styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{round(x):,}")
+                for col in percentage_columns:
+                    styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{x:.1f}%")
+                
                 # Reorder columns
                 weekly_column_order = [
                     'Week Starting',
@@ -273,8 +307,8 @@ def main():
                     'Avg. Non-London, Hybrid Attendance (#)',
                     'Avg. Total Attendance (#)'
                 ]
-                weekly_display = weekly_display[weekly_column_order]
-                st.dataframe(weekly_display, hide_index=True)
+                styled_weekly = styled_weekly[weekly_column_order]
+                st.dataframe(styled_weekly, hide_index=True)
             
             with tab3:
                 st.subheader("Period Summary")
@@ -312,7 +346,20 @@ def main():
                         'attendance_percentage': 'London + Hybrid Attendance %'
                     }
                     period_display = period_summary[display_cols_period.keys()].rename(columns=display_cols_period)
-                    st.dataframe(period_display, hide_index=True)
+                    
+                    # Create styled version
+                    styled_period = period_display.copy()
+                    
+                    # Format numbers
+                    count_columns = ['Avg. London + Hybrid Count', 'Avg. Other Count']
+                    percentage_columns = ['London + Hybrid Attendance %']
+                    
+                    for col in count_columns:
+                        styled_period[col] = styled_period[col].apply(lambda x: f"{round(x):,}")
+                    for col in percentage_columns:
+                        styled_period[col] = styled_period[col].apply(lambda x: f"{x:.1f}%")
+                    
+                    st.dataframe(styled_period, hide_index=True)
             
             with tab4:
                 st.subheader("Employee Attendance Summary")
