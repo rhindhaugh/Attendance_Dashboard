@@ -523,24 +523,33 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         # Count potential Tue-Thu during employment
         employed_tue_thu = len(employed_dates[employed_dates.dayofweek.isin([1, 2, 3])])
         
-        # Calculate average entry time for Tue-Thu
+        # Calculate mean and median entry times for Tue-Thu
         tue_thu_entries = emp_data[
             (emp_data['present'] == 'Yes') & 
             tue_thu_mask
         ].groupby('date_only')['parsed_time'].min()
         
-        avg_entry_time = (
-            tue_thu_entries.dt.hour + 
-            tue_thu_entries.dt.minute / 60
-        ).mean()
-        
-        # Convert average entry time to string format
-        if pd.notna(avg_entry_time):
-            hours = int(avg_entry_time)
-            minutes = int((avg_entry_time % 1) * 60)
-            avg_entry_str = f"{hours:02d}:{minutes:02d}"
+        # Convert times to minutes since midnight for calculations
+        if not tue_thu_entries.empty:
+            minutes = pd.Series([
+                t.hour * 60 + t.minute 
+                for t in tue_thu_entries
+            ])
+            
+            # Calculate mean
+            mean_minutes = round(minutes.mean())
+            mean_hours = mean_minutes // 60
+            mean_mins = mean_minutes % 60
+            mean_entry_str = f"{int(mean_hours):02d}:{int(mean_mins):02d}"
+            
+            # Calculate median
+            median_minutes = round(minutes.median())
+            median_hours = median_minutes // 60
+            median_mins = median_minutes % 60
+            median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
         else:
-            avg_entry_str = None
+            mean_entry_str = None
+            median_entry_str = None
         
         results.append({
             'employee_id': emp_id,
@@ -548,7 +557,8 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             'total_days_attended': attended_days,
             'tue_thu_days_attended': attended_tue_thu,
             'potential_tue_thu_days': employed_tue_thu,
-            'avg_entry_time': avg_entry_str,
+            'mean_arrival_time': mean_entry_str,
+            'median_arrival_time': median_entry_str,
             'attendance_rate': round(attended_tue_thu / employed_tue_thu * 100, 1) if employed_tue_thu > 0 else 0
         })
     
@@ -561,21 +571,20 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     
     # Rename columns to be more readable
     column_mapping = {
-        'employee_name': 'Employee Name',
-        'days_attended': 'Total Days Attended',
-        'core_days_percentage': 'Core Days Attendance %',
-        'avg_entry_time': 'Average Arrival Time'
+        'employee_id': 'Employee ID',
+        'name': 'Employee Name',
+        'total_days_attended': 'Total Days Attended',
+        'tue_thu_days_attended': 'Tuesday-Thursday Days',
+        'potential_tue_thu_days': 'Potential Office Days',
+        'mean_arrival_time': 'Mean Arrival Time',
+        'median_arrival_time': 'Median Arrival Time',
+        'attendance_rate': 'Attendance Rate (%)'
     }
     
     # Format percentage columns
-    if 'core_days_percentage' in result_df.columns:
-        result_df['core_days_percentage'] = result_df['core_days_percentage'].apply(
-            lambda x: f"{x:.1f}%" if pd.notnull(x) else None
-        )
-    
-    # Drop potential_tuesday_thu_days column if it exists
-    if 'potential_tuesday_thu_days' in result_df.columns:
-        result_df = result_df.drop('potential_tuesday_thu_days', axis=1)
+    result_df['attendance_rate'] = result_df['attendance_rate'].apply(
+        lambda x: f"{x:.1f}%" if pd.notnull(x) else None
+    )
     
     return result_df.rename(columns=column_mapping)
 
@@ -685,7 +694,10 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(daily_counts)
 
 def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate weekly attendance counts split by employee type."""
+    """
+    Calculate weekly attendance counts split by employee type.
+    Only considers Tuesday, Wednesday, and Thursday.
+    """
     df = df.copy()
     
     # Add week start date (Monday)
@@ -694,7 +706,13 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     weekly_counts = []
     for week_start in sorted(df['week_start'].unique()):
         week_end = week_start + pd.Timedelta(days=6)
-        week_mask = (df['date_only'] >= week_start) & (df['date_only'] <= week_end)
+        
+        # Updated week_mask to only include Tue-Thu
+        week_mask = (
+            (df['date_only'] >= week_start) & 
+            (df['date_only'] <= week_end) &
+            (df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday']))
+        )
         
         # Consider employment dates
         active_mask = (

@@ -176,32 +176,6 @@ def main():
                     )
                     st.plotly_chart(fig_daily_pct)
                 
-                st.subheader("Daily Attendance Counts")
-                if len(filtered_daily) > 0:
-                    fig_daily_counts = px.bar(
-                        filtered_daily,
-                        x='date',
-                        y=['london_hybrid_count', 'other_count'],
-                        title='Daily Attendance by Employee Type',
-                        labels={
-                            'date': 'Date',
-                            'value': 'Number of Employees',
-                            'variable': 'Employee Type'
-                        },
-                        barmode='stack'
-                    )
-                    
-                    fig_daily_counts.update_traces(
-                        name='London + Hybrid',
-                        selector=dict(name='london_hybrid_count')
-                    )
-                    fig_daily_counts.update_traces(
-                        name='Other Employees',
-                        selector=dict(name='other_count')
-                    )
-                    
-                    st.plotly_chart(fig_daily_counts)
-                
                 # Daily details table
                 st.subheader("Daily Attendance Details")
                 
@@ -274,6 +248,10 @@ def main():
                     'total_avg_attendance': 'Total Avg. Attendance'
                 }
                 weekly_display = filtered_weekly[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
+                
+                # Format the week_start column
+                weekly_display['Week Starting'] = weekly_display['Week Starting'].apply(format_date)
+                
                 st.dataframe(weekly_display, hide_index=True)
             
             with tab3:
@@ -323,7 +301,10 @@ def main():
                     (combined_df['date_only'] <= end_date)
                 ]
                 
+                # Get employee summary with friendly column headers
                 filtered_employee_summary = create_employee_summary(date_filtered_df)
+                
+                # Display the table (no additional renaming needed as it's done in create_employee_summary)
                 st.dataframe(filtered_employee_summary, hide_index=True)
         
         else:

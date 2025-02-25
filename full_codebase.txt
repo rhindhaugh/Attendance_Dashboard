@@ -21,6 +21,9 @@ Project root: /Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard
   - ./data/raw/
     - employee_info.csv
     - key_card_access.csv
+    - ./data/raw/csv_combiner/
+      - csv_combiner.py
+      - ./data/raw/csv_combiner/input_files/
 - ./notebooks/
 - ./src/
   - dashboard.py
@@ -270,7 +273,99 @@ pytest==7.3.1
 ==== END OF FILE: requirements.txt ====
 
 ==== START OF FILE: system_prompt.md ====
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+THIS IS A INITIAL PROMPT FOR AN LLM TO GET THEM UP TO SPEED ON THE PROJECT. ALSO USEFUL FOR CURSOR AI AS CONTEXT
+--------------------------------------------------------------------------------------------------------------------------------------------------------
 
+SYSTEM PROMPT / SUMMARY
+Project Context
+You are assisting with a project to analyze office attendance data. The user has two CSV data sources:
+
+Key card CSV (originally 100,000+ rows) with columns for date/time scans and user identifiers. Over the conversation, it evolved to have columns like employee_id, timestamp, and access_point.
+Employee info CSV (800+ rows), containing detailed information about each employee (Employee #, status, hire date, department, etc.), which gets renamed to employee_id for merging.
+The goal is to clean, merge, and analyze these datasets. The user also wants a Streamlit dashboard to visualize attendance trends (visit frequency, arrival times, etc.).
+
+Directory Structure & Python Setup
+
+A recommended repo layout was established, including data/raw/, data/processed/, src/ scripts (data_ingestion.py, data_cleaning.py, data_analysis.py, dashboard.py), plus optional notebooks/ and tests/.
+The user created a virtual environment (with venv) and a requirements.txt specifying libraries (pandas, numpy, streamlit, plotly, etc.).
+Data Handling Steps
+
+Load CSVs: data_ingestion.py has functions like load_key_card_data(...) and load_employee_info(...).
+Cleaning:
+Key card data needed to parse date/time columns (day-first) and extract numeric IDs from strings (like "761 Clark Hemmings, Andre"). Rows without a valid numeric ID (e.g., cleaners) are dropped.
+Employee info needed "Employee #" renamed to employee_id.
+Merging: A function merges both DataFrames on employee_id.
+Analysis: Simple functions in data_analysis.py calculate attendance stats (visit counts, average arrival hour).
+Dashboard: A basic Streamlit app (dashboard.py) loads the data, cleans it, merges it, and shows tables/charts.
+Key Issues Encountered & Their Solutions
+
+ModuleNotFoundError: The user hadn’t installed pandas in the correct environment or had a malformed requirements.txt. Solution: ensure the correct environment is activated and the requirements.txt is correct.
+Column mismatch (KeyError: 'Date/time'): The key card CSV actually had a column named "timestamp" instead of "Date/time". The solution was to match code references to the actual headers (or rename the CSV header).
+Small Test File Instead of Real 100k Rows: The user saw only 100 rows and IDs like 1, 2, 3..., instead of 3-digit IDs. It turned out the CSV might be a test snippet, not the real data. The solution is to confirm the real file (with ~100k rows) is placed in data/raw/ and that the correct path is used.
+NaNs after Merge: Some employee IDs in the key card data do not appear in the employee info CSV. Rows with missing matches lead to NaN values for employee info columns. If desired, an inner join or filtering out invalid IDs can remove those unmatched rows.
+Important Instruction for the LLM
+In any further conversation about this project:
+
+Ask clarifying questions or request to see code/config files whenever something is ambiguous, especially if column names, file paths, or data shapes aren’t confirmed.
+Do not rush to provide partial solutions based on assumptions—always confirm details if they are missing or unclear.
+End of Summary
+
+The key card data is only for the London office. However, all employees might scan in (e.g. employees from other offices might be visiting London).
+Further, 
+
+ADDENDUM: ADDITIONAL PROJECT CONTEXT
+Employee Data Transformations
+The project now incorporates several derived fields from employee data that are critical for accurate attendance analysis:
+
+Status v2: Distinguishes between active employees, inactive employees, and upcoming hires
+Combined hire date: Uses Original Hire Date when available, otherwise Hire Date
+Most recent day worked: For inactive employees, uses Employment Status Date; for active employees, uses today's date
+Tenure: Calculates employment duration based on hire and departure dates
+Location group: Maps detailed office locations to broader categories (London, Kent, US, Other)
+Ops or non-ops: Binary categorization of divisions
+Year flags (2014-2025): Tracks which employees were active in each calendar year
+
+Attendance Analysis Requirements
+The attendance analysis has specific business requirements:
+
+Focus on London+Hybrid employees: Primary attendance metrics target employees who are both:
+
+London-based (Location = "London UK")
+Hybrid workers (Working Status = "Hybrid")
+
+
+Dynamic denominators for percentages: When calculating attendance percentages:
+
+Must account for changing employee counts over time
+Only include employees who were actually employed on a given date (between Combined hire date and Most recent day worked)
+Different calculations needed for different time periods (weekday splits, division-specific metrics)
+
+
+Dashboard structure: The dashboard should include:
+
+Overview: Daily/weekly attendance percentages, weekday counts, division breakdowns
+Daily view: Current-day attendance with London+Hybrid vs Other categories
+Individual metrics: Per-employee stats with separate tracking for Mon/Fri vs Tues-Thurs attendance
+
+
+Data segmentation needs: Analysis requires:
+
+Monday/Friday vs Tuesday-Thursday comparison
+Operation vs non-operations divisions
+Location-based grouping
+Tenure-based analysis
+
+
+
+Technical Implementation Notes
+
+Enhanced clean_employee_info() function in data_cleaning.py now handles all employee data transformations
+New analysis functions in data_analysis.py implement the business logic for attendance calculations
+Dashboard (dashboard.py) needs to display metrics with both raw numbers and percentage views where appropriate
+All percentage calculations must use the appropriate dynamic denominator methods
+
+The focus of the project has shifted from basic attendance tracking to sophisticated workforce analytics that account for employee lifecycle changes and provide accurate metrics for hybrid work attendance patterns.
 ==== END OF FILE: system_prompt.md ====
 
 ==== START OF FILE: tests/test_data_cleaning.py ====
@@ -281,110 +376,110 @@ pytest==7.3.1
 
 ==== START OF FILE: data/processed/attendance_table.csv ====
 employee_id,employee_name,date_only,visits,present,days_attended
-nan,"Hindhaugh, Robert",2024-08-07,20.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-08,54.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-09,16.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-12,13.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-13,47.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-14,33.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-15,53.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-16,19.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-19,21.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-20,38.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-21,40.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-22,44.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-23,21.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-27,36.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-28,39.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-29,30.0,Yes,119
-nan,"Hindhaugh, Robert",2024-08-30,7.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-02,7.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-03,40.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-04,44.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-05,40.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-06,5.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-09,17.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-10,38.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-11,29.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-12,30.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-13,6.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-16,10.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-17,45.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-18,44.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-19,38.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-20,8.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-22,0.0,No,119
-nan,"Hindhaugh, Robert",2024-09-23,18.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-24,28.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-25,25.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-26,27.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-27,4.0,Yes,119
-nan,"Hindhaugh, Robert",2024-09-30,18.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-01,40.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-02,53.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-03,75.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-04,21.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-07,16.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-08,34.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-09,53.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-10,43.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-11,16.0,Yes,119
-nan,"Hindhaugh, Robert",2024-10-12,0.0,No,119
+562.0,"Adegboye, Joy",2024-08-07,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-08,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-09,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-12,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-13,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-14,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-15,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-16,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-19,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-20,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-21,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-22,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-23,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-27,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-28,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-29,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-30,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-02,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-03,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-04,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-05,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-06,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-09,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-10,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-11,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-12,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-13,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-16,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-17,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-18,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-19,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-20,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-22,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-23,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-24,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-25,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-26,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-27,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-30,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-01,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-02,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-03,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-04,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-07,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-08,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-09,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-10,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-11,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-12,0.0,No,1.0
 ... [Truncated after 50 lines]
 
 ==== END OF FILE: data/processed/attendance_table.csv ====
 
 ==== START OF FILE: data/processed/avg_arrival_hours.csv ====
 employee_id,arrival_hour
-103,10.82
-104,10.4
-105,8.71
-106,9.07
-107,12.5
-108,10.0
-110,9.36
-112,10.0
-113,9.39
-114,9.49
-115,9.74
-118,12.0
-119,8.65
-120,8.43
-121,11.5
-122,8.37
-123,8.17
-126,8.71
-128,10.29
-129,12.33
-130,9.26
-131,9.9
-132,10.45
-133,8.11
-134,10.47
-136,9.2
-137,7.95
-139,11.25
-140,8.33
-141,10.76
-143,9.18
-144,9.0
-145,9.41
-147,8.34
-148,9.44
-151,9.5
-152,10.09
-153,8.41
-155,7.11
-156,9.13
-158,9.16
-159,10.59
-160,9.39
-162,9.0
-163,10.88
-165,7.27
-166,9.4
-167,8.93
-175,9.33
+103.0,10.82
+104.0,10.4
+105.0,8.71
+106.0,9.07
+107.0,12.5
+108.0,10.0
+110.0,9.36
+112.0,10.0
+113.0,9.39
+114.0,9.49
+115.0,9.74
+118.0,12.0
+119.0,8.65
+120.0,8.43
+121.0,11.5
+122.0,8.37
+123.0,8.17
+126.0,8.71
+128.0,10.29
+129.0,12.33
+130.0,9.26
+131.0,9.9
+132.0,10.45
+133.0,8.11
+134.0,10.47
+136.0,9.2
+137.0,7.95
+139.0,11.25
+140.0,8.33
+141.0,10.76
+143.0,9.18
+144.0,9.0
+145.0,9.41
+147.0,8.34
+148.0,9.44
+151.0,9.5
+152.0,10.09
+153.0,8.41
+155.0,7.11
+156.0,9.13
+158.0,9.16
+159.0,10.59
+160.0,9.39
+162.0,9.0
+163.0,10.88
+165.0,7.27
+166.0,9.4
+167.0,8.93
+175.0,9.33
 ... [Truncated after 50 lines]
 
 ==== END OF FILE: data/processed/avg_arrival_hours.csv ====
@@ -446,55 +541,55 @@ timestamp,employee_id,User,date_only,day_of_week,time_only,earliest_scan_time,"L
 
 ==== START OF FILE: data/processed/days_summary.csv ====
 date,total_eligible,total_present,percentage
-2024-08-07,0,0,0
-2024-08-08,0,0,0
-2024-08-09,0,0,0
-2024-08-12,0,0,0
-2024-08-13,0,0,0
-2024-08-14,0,0,0
-2024-08-15,0,0,0
-2024-08-16,0,0,0
-2024-08-19,0,0,0
-2024-08-20,0,0,0
-2024-08-21,0,0,0
-2024-08-22,0,0,0
-2024-08-23,0,0,0
-2024-08-27,0,0,0
-2024-08-28,0,0,0
-2024-08-29,0,0,0
-2024-08-30,0,0,0
-2024-09-02,0,0,0
-2024-09-03,0,0,0
-2024-09-04,0,0,0
-2024-09-05,0,0,0
-2024-09-06,0,0,0
-2024-09-09,0,0,0
-2024-09-10,0,0,0
-2024-09-11,0,0,0
-2024-09-12,0,0,0
-2024-09-13,0,0,0
-2024-09-16,0,0,0
-2024-09-17,0,0,0
-2024-09-18,0,0,0
-2024-09-19,0,0,0
-2024-09-20,0,0,0
-2024-09-22,0,0,0
-2024-09-23,0,0,0
-2024-09-24,0,0,0
-2024-09-25,0,0,0
-2024-09-26,0,0,0
-2024-09-27,0,0,0
-2024-09-30,0,0,0
-2024-10-01,0,0,0
-2024-10-02,0,0,0
-2024-10-03,0,0,0
-2024-10-04,0,0,0
-2024-10-07,0,0,0
-2024-10-08,0,0,0
-2024-10-09,0,0,0
-2024-10-10,0,0,0
-2024-10-11,0,0,0
-2024-10-12,0,0,0
+2024-08-07,264,36,13.6
+2024-08-08,264,164,62.1
+2024-08-09,263,21,8.0
+2024-08-12,263,18,6.8
+2024-08-13,263,185,70.3
+2024-08-14,263,179,68.1
+2024-08-15,263,169,64.3
+2024-08-16,261,10,3.8
+2024-08-19,261,19,7.3
+2024-08-20,260,181,69.6
+2024-08-21,259,175,67.6
+2024-08-22,259,163,62.9
+2024-08-23,259,13,5.0
+2024-08-27,263,140,53.2
+2024-08-28,263,126,47.9
+2024-08-29,262,134,51.1
+2024-08-30,262,11,4.2
+2024-09-02,262,15,5.7
+2024-09-03,264,180,68.2
+2024-09-04,264,165,62.5
+2024-09-05,264,170,64.4
+2024-09-06,264,14,5.3
+2024-09-09,264,16,6.1
+2024-09-10,264,180,68.2
+2024-09-11,264,177,67.0
+2024-09-12,264,175,66.3
+2024-09-13,264,11,4.2
+2024-09-16,264,19,7.2
+2024-09-17,265,199,75.1
+2024-09-18,265,190,71.7
+2024-09-19,265,177,66.8
+2024-09-20,265,40,15.1
+2024-09-22,265,4,1.5
+2024-09-23,265,14,5.3
+2024-09-24,266,194,72.9
+2024-09-25,265,188,70.9
+2024-09-26,265,190,71.7
+2024-09-27,265,12,4.5
+2024-09-30,265,13,4.9
+2024-10-01,267,203,76.0
+2024-10-02,267,192,71.9
+2024-10-03,267,192,71.9
+2024-10-04,267,16,6.0
+2024-10-07,267,14,5.2
+2024-10-08,269,204,75.8
+2024-10-09,269,199,74.0
+2024-10-10,269,191,71.0
+2024-10-11,269,15,5.6
+2024-10-12,269,1,0.4
 ... [Truncated after 50 lines]
 
 ==== END OF FILE: data/processed/days_summary.csv ====
@@ -664,6 +759,69 @@ Resigned on 21st of July (2 weeks' notice in agreement with Krishna).",,,,,,,,,1
 
 ==== END OF FILE: data/raw/key_card_access.csv ====
 
+==== START OF FILE: data/raw/csv_combiner/csv_combiner.py ====
+#!/usr/bin/env python3
+import os
+import glob
+import pandas as pd
+
+def combine_csv_files(input_dir, output_file, subset_cols=None):
+    """
+    Combines all CSV files in input_dir into one DataFrame,
+    removes duplicate rows, and saves the result to output_file.
+    
+    Parameters:
+      - input_dir: str, directory where the CSV files are located.
+      - output_file: str, path to the output CSV file.
+      - subset_cols: list of str, optional. If provided, duplicates will be
+                     dropped based on these columns.
+    """
+    # Find all CSV files in the input directory
+    csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
+    if not csv_files:
+        print(f"No CSV files found in {input_dir}")
+        return
+
+    # Read each CSV file into a DataFrame
+    df_list = []
+    for file in csv_files:
+        try:
+            df = pd.read_csv(file)
+            df_list.append(df)
+            print(f"Loaded {file} with {len(df)} rows")
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+    # Concatenate all DataFrames
+    combined_df = pd.concat(df_list, ignore_index=True)
+    print(f"\nCombined DataFrame has {len(combined_df)} rows before deduplication.")
+
+    # Drop duplicates (using all columns or a subset if provided)
+    if subset_cols:
+        combined_df = combined_df.drop_duplicates(subset=subset_cols)
+    else:
+        combined_df = combined_df.drop_duplicates()
+    print(f"Combined DataFrame has {len(combined_df)} rows after deduplication.")
+
+    # Save the combined DataFrame to the output CSV file
+    combined_df.to_csv(output_file, index=False)
+    print(f"\nCombined CSV saved to {output_file}")
+
+if __name__ == "__main__":
+    # Define the input directory (where individual CSV files are stored)
+    input_directory = os.path.join("data", "raw", "csv_combiner", "input_files")
+    
+    # Define the output CSV path, which is the file your project currently uses.
+    output_csv = os.path.join("data", "raw", "key_card_access.csv")
+    
+    # Optionally define columns to use for deduplication.
+    # For example, if 'Date/time' and 'User' uniquely identify a record:
+    dedupe_subset = ['Date/time', 'User']
+    
+    combine_csv_files(input_directory, output_csv, subset_cols=dedupe_subset)
+
+==== END OF FILE: data/raw/csv_combiner/csv_combiner.py ====
+
 ==== START OF FILE: src/dashboard.py ====
 import streamlit as st
 import pandas as pd
@@ -690,7 +848,11 @@ from data_analysis import (
     calculate_attendance_by_weekday,
     calculate_attendance_by_division,
     calculate_individual_attendance,
-    analyze_entrance_patterns
+    create_employee_summary,
+    calculate_tue_thu_attendance_percentage,
+    calculate_daily_attendance_counts,
+    calculate_weekly_attendance_counts,
+    calculate_period_summary
 )
 
 def load_data():
@@ -718,61 +880,279 @@ def save_processed_data(attendance_table, daily_attendance_pct, avg_arrival_hour
     daily_attendance_pct.to_csv(processed_dir / "days_summary.csv", index=False)
     avg_arrival_hours.to_csv(processed_dir / "avg_arrival_hours.csv", index=False)
 
+def load_and_process_data():
+    """Load and process all data, returning the combined DataFrame."""
+    # Load raw data
+    key_card_df, employee_df = load_data()
+    
+    # Clean data
+    key_card_df = clean_key_card_data(key_card_df)
+    employee_df = clean_employee_info(employee_df)
+    
+    # Merge datasets
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+    
+    # Create attendance table to get 'present' field
+    attendance_table = build_attendance_table(combined_df)
+    
+    # Merge attendance data back to combined_df
+    combined_df = combined_df.merge(
+        attendance_table[['employee_id', 'date_only', 'present', 'visits']],
+        on=['employee_id', 'date_only'],
+        how='left'
+    )
+    
+    # Fill any missing values in present column with 'No'
+    combined_df['present'] = combined_df['present'].fillna('No')
+    
+    # Print debug info
+    print("\nProcessed data info:")
+    print(f"Total rows: {len(combined_df)}")
+    print(f"Rows with present=Yes: {(combined_df['present'] == 'Yes').sum()}")
+    print(f"Unique employees: {combined_df['employee_id'].nunique()}")
+    print("\nSample of processed data:")
+    print(combined_df[['employee_id', 'date_only', 'present', 'visits', 'Location', 'Working Status']].head())
+    
+    return combined_df
+
+def filter_by_date_range(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp, date_col: str = 'date') -> pd.DataFrame:
+    """Filter DataFrame by date range."""
+    return df[
+        (df[date_col] >= pd.Timestamp(start_date)) &
+        (df[date_col] <= pd.Timestamp(end_date))
+    ]
+
+def format_date(date_str):
+    """Convert date string to formatted date (e.g., '7th August 2024')"""
+    date = pd.to_datetime(date_str)
+    
+    def ordinal(n):
+        if 10 <= n % 100 <= 20:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+        return str(n) + suffix
+    
+    return f"{ordinal(date.day)} {date.strftime('%B %Y')}"
+
 def main():
     """Main function to run the dashboard."""
     st.title("Office Attendance Dashboard")
     
     try:
         # Load and process data
-        key_card_df, employee_df = load_data()
+        combined_df = load_and_process_data()
         
-        # Clean data
-        key_card_df = clean_key_card_data(key_card_df)
-        employee_df = clean_employee_info(employee_df)
+        # Create analyses
+        tue_thu_attendance = calculate_tue_thu_attendance_percentage(combined_df)
+        daily_counts = calculate_daily_attendance_counts(combined_df)
+        weekly_counts = calculate_weekly_attendance_counts(combined_df)
         
-        # Merge datasets
-        merged_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+        # Date range selector in sidebar
+        st.sidebar.header("Date Range Selection")
+        min_date = combined_df['date_only'].min()
+        max_date = combined_df['date_only'].max()
         
-        # Build attendance table first
-        attendance_table = build_attendance_table(merged_df)
+        default_start = min_date
+        default_end = max_date
         
-        # Add 'present' column back to merged_df for other calculations
-        merged_df = merged_df.merge(
-            attendance_table[['employee_id', 'date_only', 'present']],
-            on=['employee_id', 'date_only'],
-            how='left'
+        # Quick selection buttons
+        st.sidebar.subheader("Quick Select")
+        if st.sidebar.button("Last 30 Days"):
+            default_start = max_date - pd.Timedelta(days=30)
+            default_end = max_date
+        if st.sidebar.button("Last 90 Days"):
+            default_start = max_date - pd.Timedelta(days=90)
+            default_end = max_date
+        
+        selected_dates = st.sidebar.date_input(
+            "Select Date Range",
+            value=(default_start, default_end),
+            min_value=min_date,
+            max_value=max_date
         )
         
-        # Now calculate other metrics
-        daily_attendance_pct = calculate_daily_attendance_percentage(merged_df)
-        avg_arrival_hours = calculate_average_arrival_hour(merged_df)
+        # Ensure we have both start and end dates
+        if len(selected_dates) == 2:
+            # Convert date objects to timestamps
+            start_date = pd.Timestamp(selected_dates[0])
+            end_date = pd.Timestamp(selected_dates[1])
+            
+            # Filter all DataFrames
+            filtered_tue_thu = filter_by_date_range(tue_thu_attendance, start_date, end_date)
+            filtered_daily = filter_by_date_range(daily_counts, start_date, end_date)
+            filtered_weekly = filter_by_date_range(weekly_counts, start_date, end_date, 'week_start')
+            
+            # Calculate period summary
+            period_summary = calculate_period_summary(combined_df, start_date, end_date)
+            
+            # Create tabs
+            tab1, tab2, tab3, tab4 = st.tabs(["Daily Overview", "Weekly Overview", "Period Summary", "Employee Details"])
+            
+            with tab1:
+                st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
+                if len(filtered_tue_thu) > 0:
+                    fig_daily_pct = px.line(
+                        filtered_tue_thu,
+                        x='date',
+                        y='percentage',
+                        title='Daily Office Attendance Percentage (Tue-Thu)',
+                        labels={'percentage': 'Attendance %', 'date': 'Date'}
+                    )
+                    st.plotly_chart(fig_daily_pct)
+                
+                st.subheader("Daily Attendance Counts")
+                if len(filtered_daily) > 0:
+                    fig_daily_counts = px.bar(
+                        filtered_daily,
+                        x='date',
+                        y=['london_hybrid_count', 'other_count'],
+                        title='Daily Attendance by Employee Type',
+                        labels={
+                            'date': 'Date',
+                            'value': 'Number of Employees',
+                            'variable': 'Employee Type'
+                        },
+                        barmode='stack'
+                    )
+                    
+                    fig_daily_counts.update_traces(
+                        name='London + Hybrid',
+                        selector=dict(name='london_hybrid_count')
+                    )
+                    fig_daily_counts.update_traces(
+                        name='Other Employees',
+                        selector=dict(name='other_count')
+                    )
+                    
+                    st.plotly_chart(fig_daily_counts)
+                
+                # Daily details table
+                st.subheader("Daily Attendance Details")
+                
+                # Format the date column before display
+                display_df = filtered_daily.copy()
+                display_df['date'] = display_df['date'].apply(format_date)
+                
+                # Rename columns to be more readable
+                column_mapping = {
+                    'date': 'Date',
+                    'day_of_week': 'Day of Week',
+                    'london_hybrid_count': 'London + Hybrid Present',
+                    'other_count': 'Other Employees Present',
+                    'eligible_london_hybrid': 'Total Eligible London + Hybrid',
+                    'london_hybrid_percentage': 'London + Hybrid Attendance %',
+                    'total_attendance': 'Total Attendance'
+                }
+                
+                display_df = display_df.rename(columns=column_mapping)
+                st.dataframe(display_df, hide_index=True)
+            
+            with tab2:
+                st.subheader("Weekly Attendance Percentage")
+                if len(filtered_weekly) > 0:
+                    fig_weekly_pct = px.line(
+                        filtered_weekly,
+                        x='week_start',
+                        y='london_hybrid_percentage',
+                        title='Weekly Office Attendance Percentage',
+                        labels={
+                            'london_hybrid_percentage': 'Attendance %',
+                            'week_start': 'Week Starting'
+                        }
+                    )
+                    st.plotly_chart(fig_weekly_pct)
+                
+                st.subheader("Weekly Attendance Counts")
+                if len(filtered_weekly) > 0:
+                    fig_weekly_counts = px.bar(
+                        filtered_weekly,
+                        x='week_start',
+                        y=['london_hybrid_avg', 'other_avg'],
+                        title='Average Daily Attendance by Employee Type (Weekly)',
+                        labels={
+                            'week_start': 'Week Starting',
+                            'value': 'Average Daily Attendance',
+                            'variable': 'Employee Type'
+                        },
+                        barmode='stack'
+                    )
+                    
+                    fig_weekly_counts.update_traces(
+                        name='London + Hybrid',
+                        selector=dict(name='london_hybrid_avg')
+                    )
+                    fig_weekly_counts.update_traces(
+                        name='Other Employees',
+                        selector=dict(name='other_avg')
+                    )
+                    
+                    st.plotly_chart(fig_weekly_counts)
+                
+                # Weekly details table
+                st.subheader("Weekly Attendance Details")
+                display_cols_weekly = {
+                    'week_start': 'Week Starting',
+                    'london_hybrid_avg': 'Avg. London + Hybrid Count',
+                    'other_avg': 'Avg. Other Count',
+                    'london_hybrid_percentage': 'London + Hybrid %',
+                    'total_avg_attendance': 'Total Avg. Attendance'
+                }
+                weekly_display = filtered_weekly[display_cols_weekly.keys()].rename(columns=display_cols_weekly)
+                st.dataframe(weekly_display, hide_index=True)
+            
+            with tab3:
+                st.subheader("Period Summary")
+                if len(period_summary) > 0:
+                    fig_period = px.bar(
+                        period_summary,
+                        x='weekday',
+                        y=['london_hybrid_count', 'other_count'],
+                        title='Average Daily Attendance by Weekday',
+                        labels={
+                            'weekday': 'Day of Week',
+                            'value': 'Average Attendance',
+                            'variable': 'Employee Type'
+                        },
+                        barmode='group'
+                    )
+                    
+                    fig_period.update_traces(
+                        name='London + Hybrid',
+                        selector=dict(name='london_hybrid_count')
+                    )
+                    fig_period.update_traces(
+                        name='Other Employees',
+                        selector=dict(name='other_count')
+                    )
+                    
+                    st.plotly_chart(fig_period)
+                    
+                    # Period summary table
+                    st.subheader("Weekday Averages")
+                    display_cols_period = {
+                        'weekday': 'Day of Week',
+                        'london_hybrid_count': 'Avg. London + Hybrid Count',
+                        'other_count': 'Avg. Other Count',
+                        'attendance_percentage': 'London + Hybrid Attendance %'
+                    }
+                    period_display = period_summary[display_cols_period.keys()].rename(columns=display_cols_period)
+                    st.dataframe(period_display, hide_index=True)
+            
+            with tab4:
+                st.subheader("Employee Attendance Summary")
+                
+                # Filter employee summary for selected date range
+                date_filtered_df = combined_df[
+                    (combined_df['date_only'] >= start_date) &
+                    (combined_df['date_only'] <= end_date)
+                ]
+                
+                filtered_employee_summary = create_employee_summary(date_filtered_df)
+                st.dataframe(filtered_employee_summary, hide_index=True)
         
-        # Save processed data
-        save_processed_data(attendance_table, daily_attendance_pct, avg_arrival_hours)
-        
-        # Analyze entrance patterns
-        analyze_entrance_patterns(merged_df)
-        
-        # Create visualizations
-        st.subheader("Daily Attendance Percentage")
-        fig_daily = px.line(
-            daily_attendance_pct,
-            x='date',
-            y='percentage',
-            title='Daily Office Attendance Percentage'
-        )
-        st.plotly_chart(fig_daily)
-        
-        # Show raw data tables
-        st.subheader("Raw Data")
-        if st.checkbox("Show attendance table"):
-            st.write(attendance_table)
-        
-        if st.checkbox("Show daily attendance percentages"):
-            st.write(daily_attendance_pct)
-        
-        if st.checkbox("Show average arrival hours"):
-            st.write(avg_arrival_hours)
+        else:
+            st.error("Please select both start and end dates")
             
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
@@ -1238,24 +1618,352 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
     
     return pd.DataFrame(result)
 
-def analyze_entrance_patterns(df: pd.DataFrame) -> None:
-    """Analyze and print entrance patterns from the data."""
-    print("\nDateTime column dtype:", df['parsed_time'].dtype)
+
+def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create employee summary table with attendance metrics.
     
-    # Distribution of entrances by hour
-    print("\nEntrance distribution by hour:")
-    print(df['parsed_time'].dt.hour.value_counts().sort_index())
+    Args:
+        df: Combined dataframe with employee and attendance data
+        
+    Returns:
+        DataFrame with employee attendance summary
+    """
+    # Ensure date columns are datetime
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    df['Combined hire date'] = pd.to_datetime(df['Combined hire date'])
+    df['Most recent day worked'] = pd.to_datetime(df['Most recent day worked'])
     
-    # Sample of early morning scans
-    print("\nSample of early morning scans:")
-    early_scans = df.sort_values('parsed_time').head()
-    print(early_scans[['Date/time', 'parsed_time', 'Where']].head())
+    # Get the full date range from the data
+    date_range = pd.date_range(
+        start=df['date_only'].min(),
+        end=df['date_only'].max()
+    )
     
-    # Sample of entries for a specific date
-    sample_date = df['date_only'].min()
-    print(f"\nAll entries for {sample_date} (sorted chronologically):")
-    date_entries = df[df['date_only'] == sample_date].sort_values('parsed_time')
-    print(date_entries[['parsed_time', 'Where']])
+    # Initialize results list
+    results = []
+    
+    # Get unique employees
+    unique_employees = df.drop_duplicates('employee_id')[
+        ['employee_id', 'Last name, First name']
+    ]
+    
+    for _, emp in unique_employees.iterrows():
+        emp_id = emp['employee_id']
+        emp_name = emp['Last name, First name']
+        
+        # Get employee's data
+        emp_data = df[df['employee_id'] == emp_id].copy()
+        if emp_data.empty:
+            continue
+            
+        # Get first record for this employee
+        first_record = emp_data.iloc[0]
+        
+        # Get employment dates
+        hire_date = pd.to_datetime(first_record['Combined hire date'])
+        last_day = pd.to_datetime(first_record['Most recent day worked'])
+        
+        # If last_day is NaT (active employee), use the end of our data range
+        if pd.isna(last_day):
+            last_day = date_range[-1]
+            
+        # Filter for days when employee was employed
+        employed_dates = date_range[
+            (date_range >= hire_date) & 
+            (date_range <= last_day)
+        ]
+        
+        # Get attended days
+        attended_days = emp_data[
+            (emp_data['present'] == 'Yes')
+        ]['date_only'].nunique()
+        
+        # Get Tue-Thu metrics
+        tue_thu_mask = emp_data['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+        attended_tue_thu = emp_data[
+            (emp_data['present'] == 'Yes') & 
+            tue_thu_mask
+        ]['date_only'].nunique()
+        
+        # Count potential Tue-Thu during employment
+        employed_tue_thu = len(employed_dates[employed_dates.dayofweek.isin([1, 2, 3])])
+        
+        # Calculate average entry time for Tue-Thu
+        tue_thu_entries = emp_data[
+            (emp_data['present'] == 'Yes') & 
+            tue_thu_mask
+        ].groupby('date_only')['parsed_time'].min()
+        
+        avg_entry_time = (
+            tue_thu_entries.dt.hour + 
+            tue_thu_entries.dt.minute / 60
+        ).mean()
+        
+        # Convert average entry time to string format
+        if pd.notna(avg_entry_time):
+            hours = int(avg_entry_time)
+            minutes = int((avg_entry_time % 1) * 60)
+            avg_entry_str = f"{hours:02d}:{minutes:02d}"
+        else:
+            avg_entry_str = None
+        
+        results.append({
+            'employee_id': emp_id,
+            'name': emp_name,
+            'total_days_attended': attended_days,
+            'tue_thu_days_attended': attended_tue_thu,
+            'potential_tue_thu_days': employed_tue_thu,
+            'avg_entry_time': avg_entry_str,
+            'attendance_rate': round(attended_tue_thu / employed_tue_thu * 100, 1) if employed_tue_thu > 0 else 0
+        })
+    
+    # Convert to DataFrame and sort by attendance rate
+    result_df = pd.DataFrame(results).sort_values('attendance_rate', ascending=False)
+    
+    # Round numeric columns
+    numeric_cols = ['total_days_attended', 'tue_thu_days_attended', 'potential_tue_thu_days', 'attendance_rate']
+    result_df[numeric_cols] = result_df[numeric_cols].round(1)
+    
+    # Rename columns to be more readable
+    column_mapping = {
+        'employee_name': 'Employee Name',
+        'days_attended': 'Total Days Attended',
+        'core_days_percentage': 'Core Days Attendance %',
+        'avg_entry_time': 'Average Arrival Time'
+    }
+    
+    # Format percentage columns
+    if 'core_days_percentage' in result_df.columns:
+        result_df['core_days_percentage'] = result_df['core_days_percentage'].apply(
+            lambda x: f"{x:.1f}%" if pd.notnull(x) else None
+        )
+    
+    # Drop potential_tuesday_thu_days column if it exists
+    if 'potential_tuesday_thu_days' in result_df.columns:
+        result_df = result_df.drop('potential_tuesday_thu_days', axis=1)
+    
+    return result_df.rename(columns=column_mapping)
+
+def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily attendance percentage, excluding Mon/Fri."""
+    df = df.copy()
+    
+    # Filter for Tue-Thu
+    tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+    df = df[tue_thu_mask]
+    
+    # Get all unique dates and sort them
+    all_dates = sorted(df['date_only'].unique())
+    
+    daily_attendance = []
+    for date in all_dates:
+        # Filter for employees who were employed on this date
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= date)
+            )
+        )
+        
+        # Filter for London & Hybrid employees
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Calculate metrics
+        eligible_employees = df[active_mask & london_hybrid_mask]['employee_id'].nunique()
+        present_employees = df[
+            (df['date_only'] == date) &
+            active_mask & 
+            london_hybrid_mask &
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        percentage = (present_employees / eligible_employees * 100) if eligible_employees > 0 else 0
+        
+        daily_attendance.append({
+            'date': date,
+            'total_eligible': eligible_employees,
+            'total_present': present_employees,
+            'percentage': round(percentage, 1)
+        })
+    
+    return pd.DataFrame(daily_attendance)
+
+def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily attendance counts split by employee type."""
+    # Calculate attendance for each day
+    daily_counts = []
+    
+    for date in sorted(df['date_only'].unique()):
+        date_mask = (df['date_only'] == date)
+        
+        # Consider employment dates
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= date)
+            )
+        )
+        
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Count London + Hybrid who were present
+        london_hybrid_count = df[
+            date_mask & 
+            active_mask &
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Count others who were present
+        others_count = df[
+            date_mask & 
+            active_mask &
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Get total eligible London + Hybrid employees for that date
+        total_eligible_london_hybrid = df[
+            active_mask &
+            london_hybrid_mask
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage based on eligible employees
+        attendance_percentage = (
+            (london_hybrid_count / total_eligible_london_hybrid * 100)
+            if total_eligible_london_hybrid > 0 else 0
+        )
+        
+        daily_counts.append({
+            'date': date,
+            'day_of_week': pd.Timestamp(date).strftime('%A'),
+            'london_hybrid_count': london_hybrid_count,
+            'other_count': others_count,
+            'eligible_london_hybrid': total_eligible_london_hybrid,  # Added for verification
+            'london_hybrid_percentage': round(attendance_percentage, 1),
+            'total_attendance': london_hybrid_count + others_count
+        })
+    
+    return pd.DataFrame(daily_counts)
+
+def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate weekly attendance counts split by employee type."""
+    df = df.copy()
+    
+    # Add week start date (Monday)
+    df['week_start'] = df['date_only'] - pd.to_timedelta(df['date_only'].dt.dayofweek, unit='d')
+    
+    weekly_counts = []
+    for week_start in sorted(df['week_start'].unique()):
+        week_end = week_start + pd.Timedelta(days=6)
+        week_mask = (df['date_only'] >= week_start) & (df['date_only'] <= week_end)
+        
+        # Consider employment dates
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= week_end) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= week_start)
+            )
+        )
+        
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Calculate daily attendance for London+Hybrid
+        london_hybrid_daily = df[
+            week_mask & 
+            active_mask &
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique()
+        
+        # Calculate daily attendance for others
+        others_daily = df[
+            week_mask & 
+            active_mask &
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique()
+        
+        # Get total eligible London+Hybrid employees
+        total_eligible_london_hybrid = df[
+            week_mask &
+            active_mask &
+            london_hybrid_mask
+        ]['employee_id'].nunique()
+        
+        # Calculate averages
+        london_hybrid_avg = london_hybrid_daily.mean() if not london_hybrid_daily.empty else 0
+        others_avg = others_daily.mean() if not others_daily.empty else 0
+        
+        # Calculate attendance percentage
+        attendance_percentage = (
+            (london_hybrid_avg / total_eligible_london_hybrid * 100)
+            if total_eligible_london_hybrid > 0 else 0
+        )
+        
+        weekly_counts.append({
+            'week_start': week_start,
+            'london_hybrid_avg': round(london_hybrid_avg, 1),
+            'other_avg': round(others_avg, 1),
+            'eligible_london_hybrid': total_eligible_london_hybrid,
+            'london_hybrid_percentage': round(attendance_percentage, 1),
+            'total_avg_attendance': round(london_hybrid_avg + others_avg, 1)
+        })
+    
+    return pd.DataFrame(weekly_counts)
+
+def calculate_period_summary(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
+    """Calculate attendance summary by weekday for a given period."""
+    df = df.copy()
+    
+    # Filter for date range
+    date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
+    df = df[date_mask]
+    
+    # Create weekday averages
+    weekday_stats = []
+    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+        day_mask = (df['day_of_week'] == day)
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Get attendance for this weekday
+        london_hybrid_attendance = df[
+            day_mask & 
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        others_attendance = df[
+            day_mask & 
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        # Get eligible London+Hybrid employees
+        eligible_london_hybrid = df[
+            day_mask &
+            london_hybrid_mask
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        attendance_percentage = (
+            (london_hybrid_attendance / eligible_london_hybrid * 100)
+            if eligible_london_hybrid > 0 else 0
+        )
+        
+        weekday_stats.append({
+            'weekday': day,
+            'london_hybrid_count': round(london_hybrid_attendance, 1),
+            'other_count': round(others_attendance, 1),
+            'attendance_percentage': round(attendance_percentage, 1)
+        })
+    
+    return pd.DataFrame(weekday_stats)
 ==== END OF FILE: src/data_analysis.py ====
 
 ==== START OF FILE: src/data_cleaning.py ====
@@ -1302,15 +2010,23 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     """Clean and preprocess the key card access data."""
     df = df.copy()
     
-    # Extract employee_id from 'User' column
+    # Extract employee_id from 'User' column with improved regex
     if 'User' in df.columns:
-        print("\nExtracting employee_id from User column")
-        df['Employee #'] = df['User'].str.extract(r'^(\d+)')
+        # Extract numeric ID and convert to numeric type
+        df['employee_id'] = df['User'].str.extract(r'^(\d+)').astype(float)
         
-        print("\nSample of User column data:")
-        print(df['User'].head())
-        print("\nSample of extracted Employee #:")
-        print(df['Employee #'].head())
+        print("\nSample of User column data with extracted IDs:")
+        sample_df = pd.concat([
+            df['User'],
+            df['employee_id']
+        ], axis=1).head(10)
+        print(sample_df)
+        
+        # Print value counts to see extraction results
+        print("\nEmployee ID extraction stats:")
+        print(f"Total rows: {len(df)}")
+        print(f"Rows with valid IDs: {df['employee_id'].notna().sum()}")
+        print(f"Rows without IDs: {df['employee_id'].isna().sum()}")
     
     # Parse Date/time with explicit format
     df['parsed_time'] = pd.to_datetime(
@@ -1332,8 +2048,18 @@ def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     """Clean and preprocess the employee information."""
     df = df.copy()
     
+    # Convert Employee # to employee_id and ensure it's numeric
+    df = df.rename(columns={'Employee #': 'employee_id'})
+    df['employee_id'] = pd.to_numeric(df['employee_id'], errors='coerce')
+    
+    print("\nEmployee info stats:")
+    print(f"Total employees: {len(df)}")
+    print(f"Employees with valid IDs: {df['employee_id'].notna().sum()}")
+    print(f"Unique employee IDs: {df['employee_id'].nunique()}")
+    
     # Convert date columns
-    date_columns = ['Hire Date', 'Original Hire Date', 'Resignation Date']
+    date_columns = ['Hire Date', 'Original Hire Date', 'Resignation Date', 
+                   'Employment Status: Date']
     for col in date_columns:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
@@ -1343,6 +2069,12 @@ def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     df = compute_combined_hire_date(df)
     df = compute_most_recent_day_worked(df)
     
+    # Clean up Working Status
+    if 'Working Status' in df.columns:
+        df['Working Status'] = df['Working Status'].str.strip()
+        print("\nUnique Working Status values:")
+        print(df['Working Status'].value_counts())
+    
     return df
 
 def merge_key_card_with_employee_info(
@@ -1351,43 +2083,43 @@ def merge_key_card_with_employee_info(
 ) -> pd.DataFrame:
     """Merge key card data with employee information."""
     print("\nBefore merge:")
-    print("Key card columns:", key_card_df.columns.tolist())
-    print("Employee columns:", employee_df.columns.tolist())
+    print("Key card shape:", key_card_df.shape)
+    print("Employee shape:", employee_df.shape)
     
-    # We know the employee ID column name in both DataFrames
-    key_card_id_col = 'Employee #'
-    employee_id_col = 'Employee #'
-    
-    if key_card_id_col not in key_card_df.columns or employee_id_col not in employee_df.columns:
-        print("\nError: Could not find Employee # column in one or both DataFrames")
-        print("Key card columns:", key_card_df.columns.tolist())
-        print("Employee columns:", employee_df.columns.tolist())
-        raise KeyError(f"Employee # column not found in one or both DataFrames")
-    
-    # Ensure both columns are of the same type (string)
+    # Both DataFrames should have 'employee_id' column at this point
+    if 'employee_id' not in key_card_df.columns or 'employee_id' not in employee_df.columns:
+        raise KeyError("Both DataFrames must have 'employee_id' column")
+        
+    # Ensure employee_id is numeric in both DataFrames
     key_card_df = key_card_df.copy()
     employee_df = employee_df.copy()
     
-    key_card_df[key_card_id_col] = key_card_df[key_card_id_col].astype(str)
-    employee_df[employee_id_col] = employee_df[employee_id_col].astype(str)
+    # Print sample of IDs before merge
+    print("\nFirst few employee IDs from key card data:")
+    print(key_card_df[['User', 'employee_id']].head())
+    print("\nFirst few employee IDs from employee info:")
+    print(employee_df[['employee_id', 'Last name, First name']].head())
     
+    # Merge the DataFrames
     merged_df = pd.merge(
         key_card_df,
         employee_df,
-        on=employee_id_col,
-        how="left"
+        on='employee_id',
+        how='left'
     )
     
-    # Rename Employee # to employee_id after merge
-    merged_df = merged_df.rename(columns={"Employee #": "employee_id"})
-    
-    # Ensure date_only remains datetime64[ns]
-    if merged_df['date_only'].dtype != 'datetime64[ns]':
-        merged_df['date_only'] = pd.to_datetime(merged_df['date_only'])
-    
+    # Debug: Check the merge results
     print("\nAfter merge:")
-    print(f"merged_df date_only dtype = {merged_df['date_only'].dtype}")
-    print("Merged columns:", merged_df.columns.tolist())
+    print("Merged shape:", merged_df.shape)
+    print("\nColumns with high null counts (>50%):")
+    null_counts = merged_df.isnull().sum()
+    high_nulls = null_counts[null_counts > len(merged_df) * 0.5]
+    print(high_nulls)
+    
+    # Print sample of merged data
+    print("\nSample of merged data:")
+    sample_cols = ['employee_id', 'User', 'Last name, First name', 'Working Status', 'Location']
+    print(merged_df[sample_cols].head(10))
     
     return merged_df
 
