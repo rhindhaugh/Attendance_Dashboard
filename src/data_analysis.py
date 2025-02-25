@@ -40,7 +40,8 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
             employee_dates.append({
                 "employee_id": employee["employee_id"],
                 "employee_name": employee["Last name, First name"],
-                "date_only": date
+                "date_only": date,
+                "day_of_week": pd.Timestamp(date).strftime('%A')  # Add day of week
             })
     
     cross_df = pd.DataFrame(employee_dates)
@@ -829,49 +830,83 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     
     return pd.DataFrame(weekly_counts)
 
-def calculate_period_summary(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
+def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -> pd.DataFrame:
     """Calculate attendance summary by weekday for a given period."""
     df = df.copy()
     
-    # Filter for date range
-    date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
-    df = df[date_mask]
+    # Filter for date range only if both dates are provided
+    if start_date is not None and end_date is not None:
+        date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
+        df = df[date_mask]
     
-    # Create weekday averages
+    # Create weekday averages - more robust calculation
     weekday_stats = []
     for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
-        day_mask = (df['day_of_week'] == day)
-        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        # Get unique dates for this day of week
+        day_dates = df[df['day_of_week'] == day]['date_only'].unique()
         
-        # Get attendance for this weekday
-        london_hybrid_attendance = df[
-            day_mask & 
-            london_hybrid_mask & 
-            (df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        # Initialize counters
+        total_london_hybrid = 0
+        total_others = 0
+        total_eligible = 0
         
-        others_attendance = df[
-            day_mask & 
-            ~london_hybrid_mask & 
-            (df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        # Calculate for each date separately to avoid double-counting
+        for date in day_dates:
+            # Consider employment dates
+            active_mask = (
+                (pd.to_datetime(df['Combined hire date']) <= date) &
+                (
+                    (df['Most recent day worked'].isna()) |
+                    (pd.to_datetime(df['Most recent day worked']) >= date)
+                )
+            )
+            
+            london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+            
+            # Count attendees for this day
+            present_mask = (df['date_only'] == date) & (df['present'] == 'Yes')
+            
+            # London+Hybrid employees present
+            london_hybrid_present = df[
+                present_mask & active_mask & london_hybrid_mask
+            ]['employee_id'].nunique()
+            
+            # Other employees present
+            others_present = df[
+                present_mask & active_mask & ~london_hybrid_mask
+            ]['employee_id'].nunique()
+            
+            # Eligible London+Hybrid employees for this day
+            eligible_count = df[
+                active_mask & london_hybrid_mask
+            ]['employee_id'].nunique()
+            
+            # Add to totals
+            total_london_hybrid += london_hybrid_present
+            total_others += others_present
+            total_eligible += eligible_count
         
-        # Get eligible London+Hybrid employees
-        eligible_london_hybrid = df[
-            day_mask &
-            london_hybrid_mask
-        ]['employee_id'].nunique()
+        # Calculate averages
+        if len(day_dates) > 0:
+            avg_london_hybrid = total_london_hybrid / len(day_dates)
+            avg_others = total_others / len(day_dates)
+            avg_eligible = total_eligible / len(day_dates)
+        else:
+            avg_london_hybrid = 0
+            avg_others = 0
+            avg_eligible = 0
         
         # Calculate percentage
         attendance_percentage = (
-            (london_hybrid_attendance / eligible_london_hybrid * 100)
-            if eligible_london_hybrid > 0 else 0
+            (avg_london_hybrid / avg_eligible * 100)
+            if avg_eligible > 0 else 0
         )
         
         weekday_stats.append({
             'weekday': day,
-            'london_hybrid_count': round(london_hybrid_attendance, 1),
-            'other_count': round(others_attendance, 1),
+            'london_hybrid_count': round(avg_london_hybrid, 1),
+            'other_count': round(avg_others, 1),
+            'eligible_count': round(avg_eligible, 1),  # Added for debugging
             'attendance_percentage': round(attendance_percentage, 1)
         })
     

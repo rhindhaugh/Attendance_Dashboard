@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 
 def load_key_card_data(filepath: str) -> pd.DataFrame:
     """Load key card data from CSV file."""
@@ -12,107 +14,123 @@ def load_employee_info(filepath: str) -> pd.DataFrame:
     print("\nLoaded employee info columns:", df.columns.tolist())
     return df
 
-def compute_combined_hire_date(df: pd.DataFrame) -> pd.DataFrame:
+def compute_combined_hire_date(result: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
     """Use the earlier of Hire Date and Original Hire Date (if available)."""
-    df = df.copy()
-    df["Hire Date"] = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
     if "Original Hire Date" in df.columns:
-        df["Original Hire Date"] = pd.to_datetime(df["Original Hire Date"], errors="coerce", dayfirst=True)
-        df["Combined hire date"] = df[["Hire Date", "Original Hire Date"]].min(axis=1)
+        hire_date = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
+        original_hire_date = pd.to_datetime(df["Original Hire Date"], errors="coerce", dayfirst=True)
+        result["Combined hire date"] = pd.concat([hire_date, original_hire_date], axis=1).min(axis=1)
     else:
-        df["Combined hire date"] = df["Hire Date"]
-    return df
+        result["Combined hire date"] = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
+    return result
 
 def compute_most_recent_day_worked(df: pd.DataFrame) -> pd.DataFrame:
     """Prefer Last Day over Resignation Date for departure info."""
     df = df.copy()
-    if "Last Day" in df.columns:
-        df["Last Day"] = pd.to_datetime(df["Last Day"], errors="coerce", dayfirst=True)
-    if "Resignation Date" in df.columns:
-        df["Resignation Date"] = pd.to_datetime(df["Resignation Date"], errors="coerce", dayfirst=True)
     
-    df["Most recent day worked"] = df.get("Last Day")
+    # Initialize with Last Day if it exists
+    if "Last Day" in df.columns:
+        df["Most recent day worked"] = df["Last Day"]
+    else:
+        df["Most recent day worked"] = pd.NaT
+    
+    # Fill in with Resignation Date where Last Day is missing
     if "Resignation Date" in df.columns:
         mask = df["Most recent day worked"].isna()
         df.loc[mask, "Most recent day worked"] = df.loc[mask, "Resignation Date"]
+    
     return df
 
 def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     """Clean and preprocess the key card access data."""
-    df = df.copy()
+    # Create a copy only of the columns we need to modify
+    # This is more memory-efficient than df.copy()
+    result = pd.DataFrame()
     
     # Extract employee_id from 'User' column with improved regex
     if 'User' in df.columns:
-        # Extract numeric ID and convert to numeric type
-        df['employee_id'] = df['User'].str.extract(r'^(\d+)').astype(float)
+        # Extract numeric ID and convert to numeric type - use vectorized operations
+        # Optimize with a more targeted regex
+        result['employee_id'] = pd.to_numeric(df['User'].str.extract(r'^(\d+)', expand=False), 
+                                           errors='coerce')
         
-        print("\nSample of User column data with extracted IDs:")
-        sample_df = pd.concat([
-            df['User'],
-            df['employee_id']
-        ], axis=1).head(10)
-        print(sample_df)
-        
-        # Print value counts to see extraction results
-        print("\nEmployee ID extraction stats:")
+        print(f"\nEmployee ID extraction stats:")
         print(f"Total rows: {len(df)}")
-        print(f"Rows with valid IDs: {df['employee_id'].notna().sum()}")
-        print(f"Rows without IDs: {df['employee_id'].isna().sum()}")
+        print(f"Rows with valid IDs: {result['employee_id'].notna().sum()}")
+        print(f"Rows without IDs: {result['employee_id'].isna().sum()}")
     
-    # Parse Date/time with explicit format
-    df['parsed_time'] = pd.to_datetime(
-        df['Date/time'],
-        format="%d/%m/%Y %H:%M:%S",
-        dayfirst=True,
-        errors='coerce'
-    )
+    # Optimize datetime parsing - if already parsed, don't parse again
+    if 'Date/time' in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df['Date/time']):
+            result['parsed_time'] = df['Date/time']
+        else:
+            # Use efficient vectorized parsing
+            result['parsed_time'] = pd.to_datetime(
+                df['Date/time'],
+                format="%d/%m/%Y %H:%M:%S",
+                dayfirst=True,
+                errors='coerce'
+            )
     
-    # Create date_only from parsed_time
-    df['date_only'] = df['parsed_time'].dt.floor('d')
+    # Create date_only from parsed_time using efficient vectorized operations
+    result['date_only'] = result['parsed_time'].dt.floor('d')
     
     # Add day of week
-    df['day_of_week'] = df['date_only'].dt.strftime('%A')
+    result['day_of_week'] = result['parsed_time'].dt.strftime('%A')
     
-    return df
+    # Copy only needed columns from original DataFrame to save memory
+    needed_columns = ['User', 'Where', 'Event', 'Details']
+    for col in needed_columns:
+        if col in df.columns:
+            result[col] = df[col]
+    
+    return result
 
 def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     """Clean and preprocess the employee information."""
-    df = df.copy()
+    # Create a copy only of needed columns
+    result = pd.DataFrame()
     
     # Convert Employee # to employee_id and ensure it's numeric
-    df = df.rename(columns={'Employee #': 'employee_id'})
-    df['employee_id'] = pd.to_numeric(df['employee_id'], errors='coerce')
+    result['employee_id'] = pd.to_numeric(df['Employee #'], errors='coerce')
     
     print("\nEmployee info stats:")
     print(f"Total employees: {len(df)}")
-    print(f"Employees with valid IDs: {df['employee_id'].notna().sum()}")
-    print(f"Unique employee IDs: {df['employee_id'].nunique()}")
+    print(f"Employees with valid IDs: {result['employee_id'].notna().sum()}")
+    print(f"Unique employee IDs: {result['employee_id'].nunique()}")
     
-    # Convert date columns
+    # Convert date columns efficiently
     date_columns = ['Hire Date', 'Original Hire Date', 'Resignation Date', 
                    'Employment Status: Date']
     for col in date_columns:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+            result[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
             print(f"Converted {col} to datetime")
     
     # Add computed date columns
-    df = compute_combined_hire_date(df)
-    df = compute_most_recent_day_worked(df)
+    result = compute_combined_hire_date(result, df)
+    result = compute_most_recent_day_worked(result)
+    
+    # Copy other needed columns
+    needed_columns = ['Last name, First name', 'Working Status', 'Location', 
+                     'Division', 'Department', 'Employment Status']
+    for col in needed_columns:
+        if col in df.columns:
+            result[col] = df[col]
     
     # Clean up Working Status
-    if 'Working Status' in df.columns:
-        df['Working Status'] = df['Working Status'].str.strip()
+    if 'Working Status' in result.columns:
+        result['Working Status'] = result['Working Status'].str.strip()
         print("\nUnique Working Status values:")
-        print(df['Working Status'].value_counts())
+        print(result['Working Status'].value_counts())
     
-    return df
+    return result
 
 def merge_key_card_with_employee_info(
     key_card_df: pd.DataFrame,
     employee_df: pd.DataFrame
 ) -> pd.DataFrame:
-    """Merge key card data with employee information."""
+    """Merge key card data with employee information using optimized approach."""
     print("\nBefore merge:")
     print("Key card shape:", key_card_df.shape)
     print("Employee shape:", employee_df.shape)
@@ -120,56 +138,43 @@ def merge_key_card_with_employee_info(
     # Both DataFrames should have 'employee_id' column at this point
     if 'employee_id' not in key_card_df.columns or 'employee_id' not in employee_df.columns:
         raise KeyError("Both DataFrames must have 'employee_id' column")
-        
-    # Ensure employee_id is numeric in both DataFrames
-    key_card_df = key_card_df.copy()
-    employee_df = employee_df.copy()
     
-    # Print sample of IDs before merge
-    print("\nFirst few employee IDs from key card data:")
-    print(key_card_df[['User', 'employee_id']].head())
-    print("\nFirst few employee IDs from employee info:")
-    print(employee_df[['employee_id', 'Last name, First name']].head())
+    # Optimize: Only keep employee_df rows that have matching employee_ids in key_card_df
+    # This reduces the size of the right-side DataFrame in the merge
+    unique_ids_in_keycard = key_card_df['employee_id'].unique()
+    filtered_employee_df = employee_df[employee_df['employee_id'].isin(unique_ids_in_keycard)]
+    
+    print(f"Filtered employee DataFrame from {len(employee_df)} to {len(filtered_employee_df)} rows")
     
     # Merge the DataFrames
     merged_df = pd.merge(
         key_card_df,
-        employee_df,
+        filtered_employee_df,
         on='employee_id',
         how='left'
     )
     
-    # Debug: Check the merge results
-    print("\nAfter merge:")
+    print("After merge:")
     print("Merged shape:", merged_df.shape)
-    print("\nColumns with high null counts (>50%):")
-    null_counts = merged_df.isnull().sum()
-    high_nulls = null_counts[null_counts > len(merged_df) * 0.5]
-    print(high_nulls)
-    
-    # Print sample of merged data
-    print("\nSample of merged data:")
-    sample_cols = ['employee_id', 'User', 'Last name, First name', 'Working Status', 'Location']
-    print(merged_df[sample_cols].head(10))
     
     return merged_df
 
 def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Add additional time-based analysis columns to the DataFrame."""
-    df = df.copy()
+    result = pd.DataFrame()
     
-    # Ensure Date/time is datetime
-    if not pd.api.types.is_datetime64_any_dtype(df['Date/time']):
-        df['Date/time'] = pd.to_datetime(df['Date/time'], dayfirst=True)
+    # Ensure Date/time is datetime and extract hour efficiently
+    if pd.api.types.is_datetime64_any_dtype(df['Date/time']):
+        result['hour'] = df['Date/time'].dt.hour
+    else:
+        parsed_time = pd.to_datetime(df['Date/time'], dayfirst=True)
+        result['hour'] = parsed_time.dt.hour
     
-    # Add hour of day
-    df['hour'] = df['Date/time'].dt.hour
-    
-    # Add time period categories
-    df['time_period'] = pd.cut(
-        df['hour'],
+    # Add time period categories using efficient categorization
+    result['time_period'] = pd.cut(
+        result['hour'],
         bins=[-1, 9, 12, 14, 17, 24],
         labels=['Early Morning', 'Morning', 'Lunch', 'Afternoon', 'Evening']
     )
     
-    return df
+    return result
