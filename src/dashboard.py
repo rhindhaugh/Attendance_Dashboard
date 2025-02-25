@@ -187,18 +187,18 @@ def main():
                 column_mapping = {
                     'date': 'Date',
                     'day_of_week': 'Day of Week',
-                    'london_hybrid_count': 'London + Hybrid Present',
-                    'other_count': 'Other Employees Present',
-                    'eligible_london_hybrid': 'Total Eligible London + Hybrid',
-                    'london_hybrid_percentage': 'London + Hybrid Attendance %',
-                    'total_attendance': 'Total Attendance'
+                    'london_hybrid_count': 'London, Hybrid Attendance (#)',
+                    'other_count': 'Other Employees Count',
+                    'eligible_london_hybrid': 'London, Hybrid employees (total #)',
+                    'london_hybrid_percentage': 'London, Hybrid Attendance (%)',
+                    'total_attendance': 'Total Attendance (#)'
                 }
                 
                 display_df = display_df.rename(columns=column_mapping)
                 st.dataframe(display_df, hide_index=True)
             
             with tab2:
-                st.subheader("Weekly Attendance Percentage")
+                st.subheader("Weekly Attendance Percentage (Tuesday-Thursday only)")
                 if len(filtered_weekly) > 0:
                     fig_weekly_pct = px.line(
                         filtered_weekly,
@@ -212,7 +212,7 @@ def main():
                     )
                     st.plotly_chart(fig_weekly_pct)
                 
-                st.subheader("Weekly Attendance Counts")
+                st.subheader("Weekly Attendance Counts (Tuesday-Thursday only)")
                 if len(filtered_weekly) > 0:
                     fig_weekly_counts = px.bar(
                         filtered_weekly,
@@ -239,11 +239,12 @@ def main():
                     st.plotly_chart(fig_weekly_counts)
                 
                 # Weekly details table
-                st.subheader("Weekly Attendance Details")
+                st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
                 display_cols_weekly = {
                     'week_start': 'Week Starting',
                     'london_hybrid_avg': 'Avg. London + Hybrid Count',
                     'other_avg': 'Avg. Other Count',
+                    'avg_eligible_london_hybrid': 'Avg. Eligible London + Hybrid',
                     'london_hybrid_percentage': 'London + Hybrid %',
                     'total_avg_attendance': 'Total Avg. Attendance'
                 }
