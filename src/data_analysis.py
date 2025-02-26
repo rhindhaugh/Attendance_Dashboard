@@ -16,18 +16,24 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     )
     print(temp[["employee_id", "date_only", "parsed_time", "Where"]].head(50))
     
-    # Debug step 3: Check location/working status filtering
+    # Debug step 3: Check location/working status/full-time filtering
     location_mask = (df["Location"] == "London UK")
     working_mask = (df["Working Status"] == "Hybrid")
-    print("\n[DEBUG] Location/Working Status Analysis:")
+    full_time_mask = (df["is_full_time"] == True)
+    london_hybrid_ft_mask = location_mask & working_mask & full_time_mask
+    
+    print("\n[DEBUG] Location/Working Status/Full-Time Analysis:")
     print(f"Total rows: {len(df)}")
-    print(f"Rows with non-London or non-Hybrid: {len(df[~(location_mask & working_mask)])}")
+    print(f"Rows with London, Hybrid, Full-Time: {len(df[london_hybrid_ft_mask])}")
+    print(f"Rows with non-London, Hybrid, Full-Time: {len(df[~london_hybrid_ft_mask])}")
     
     # Group value counts for investigation
     print("\nLocation distribution:")
     print(df["Location"].value_counts())
     print("\nWorking Status distribution:")
     print(df["Working Status"].value_counts())
+    print("\nFull-Time Status distribution:")
+    print(df["is_full_time"].value_counts())
     
     # 1) Get unique employees and dates
     unique_employees = df[["employee_id", "Last name, First name"]].drop_duplicates()
@@ -120,10 +126,11 @@ def calculate_average_arrival_hour(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate the daily attendance percentage for hybrid employees.
+    Calculate the daily attendance percentage for London, Hybrid, Full-Time employees.
     Only counts employees who:
     - Are based in London UK
     - Have hybrid working status
+    - Are full-time employees on that date
     - Were employed on that date (after hire date, before resignation)
     """
     # Get all unique dates and sort them
@@ -142,21 +149,24 @@ def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
         
-        # Filter for London & Hybrid employees
+        # Filter for London, Hybrid, Full-Time employees
         location_mask = (df['Location'] == 'London UK')
         working_mask = (df['Working Status'] == 'Hybrid')
+        full_time_mask = (df['is_full_time'] == True)
+        
+        # Combined mask for London, Hybrid, Full-Time
+        london_hybrid_ft_mask = location_mask & working_mask & full_time_mask
         
         # Get total eligible employees for this date
         eligible_employees = df[
-            active_mask & location_mask & working_mask
+            active_mask & london_hybrid_ft_mask
         ]['employee_id'].nunique()
         
         # Get employees who were present
         present_employees = df[
             (df['date_only'] == date) &
             active_mask & 
-            location_mask & 
-            working_mask &
+            london_hybrid_ft_mask &
             (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
@@ -193,10 +203,11 @@ def calculate_weekly_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     for week in sorted(office_days['week_commencing'].unique()):
         week_end = week + pd.Timedelta(days=6)
         
-        # Get eligible employees for this week
+        # Get eligible employees for this week (London, Hybrid, Full-Time)
         eligible_employees = df[
             (df['Location'] == 'London UK') & 
             (df['Working Status'] == 'Hybrid') &
+            (df['is_full_time'] == True) &
             (pd.to_datetime(df['Combined hire date']) <= week_end) &
             ((pd.to_datetime(df['Most recent day worked']) >= week) | 
              (df['Status'] == 'Active'))
@@ -241,11 +252,13 @@ def calculate_attendance_by_weekday(df: pd.DataFrame) -> pd.DataFrame:
     weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
     weekday_counts = df.groupby('day_of_week').apply(
         lambda x: pd.Series({
-            'london_hybrid_count': sum((x['Location'] == 'London UK') & 
-                                     (x['Working Status'] == 'Hybrid') &
-                                     (x['present'] == 'Yes')),
+            'london_hybrid_ft_count': sum((x['Location'] == 'London UK') & 
+                                       (x['Working Status'] == 'Hybrid') &
+                                       (x['is_full_time'] == True) &
+                                       (x['present'] == 'Yes')),
             'other_count': sum(~((x['Location'] == 'London UK') & 
-                               (x['Working Status'] == 'Hybrid')) &
+                               (x['Working Status'] == 'Hybrid') &
+                               (x['is_full_time'] == True)) &
                              (x['present'] == 'Yes'))
         })
     ).reset_index()
@@ -268,11 +281,12 @@ def calculate_attendance_by_division(df: pd.DataFrame) -> pd.DataFrame:
     
     result = []
     for division in unique_divisions:
-        # Get division employees
+        # Get division employees who are London, Hybrid, Full-Time
         division_employees = df[
             (df['Division'] == division) & 
             (df['Location'] == 'London UK') & 
-            (df['Working Status'] == 'Hybrid')
+            (df['Working Status'] == 'Hybrid') &
+            (df['is_full_time'] == True)
         ].drop_duplicates('employee_id')
         
         if len(division_employees) == 0:
@@ -282,7 +296,8 @@ def calculate_attendance_by_division(df: pd.DataFrame) -> pd.DataFrame:
         attendance_days = df[
             (df['Division'] == division) & 
             (df['Location'] == 'London UK') & 
-            (df['Working Status'] == 'Hybrid') & 
+            (df['Working Status'] == 'Hybrid') &
+            (df['is_full_time'] == True) & 
             (df['present'] == 'Yes')
         ].groupby('employee_id')['date_only'].nunique().sum()
         
@@ -350,6 +365,7 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
         location = first_record['Location']
         working_status = first_record['Working Status']
         status = first_record['Status']
+        is_full_time = first_record['is_full_time'] if 'is_full_time' in first_record else False
         
         # If last_day is NaT (for active employees), use the end of our data range
         if pd.isna(last_day) and status == 'Active':
@@ -362,8 +378,8 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
         core_days_percentage = None
         avg_entry_time = None
         
-        # Only calculate core metrics for London Hybrid employees
-        if location == 'London UK' and working_status == 'Hybrid':
+        # Only calculate core metrics for London, Hybrid, Full-Time employees
+        if location == 'London UK' and working_status == 'Hybrid' and is_full_time:
             # Get all core days (Tue-Thu) during employment AND within our data range
             start_date = max(hire_date, data_start_date)
             end_date = min(last_day, data_end_date)
@@ -537,6 +553,13 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         hire_date = pd.to_datetime(first_record['Combined hire date'])
         last_day = pd.to_datetime(first_record['Most recent day worked'])
         
+        # Check if employee is London, Hybrid, Full-Time
+        is_london_hybrid_ft = (
+            first_record['Location'] == 'London UK' and
+            first_record['Working Status'] == 'Hybrid' and
+            first_record['is_full_time'] == True
+        )
+        
         # If last_day is NaT (active employee), use the end of our data range
         if pd.isna(last_day):
             last_day = date_range[-1]
@@ -552,7 +575,13 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             (emp_data['present'] == 'Yes')
         ]['date_only'].nunique()
         
-        # Get Tue-Thu metrics
+        # Initialize Tue-Thu metrics
+        attended_tue_thu = 0
+        employed_tue_thu = 0
+        mean_entry_str = None
+        median_entry_str = None
+        
+        # Calculate Tue-Thu metrics for all employees
         tue_thu_mask = emp_data['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
         attended_tue_thu = emp_data[
             (emp_data['present'] == 'Yes') & 
@@ -562,53 +591,74 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         # Count potential Tue-Thu during employment
         employed_tue_thu = len(employed_dates[employed_dates.dayofweek.isin([1, 2, 3])])
         
-        # Calculate mean and median entry times for Tue-Thu
-        tue_thu_entries = emp_data[
-            (emp_data['present'] == 'Yes') & 
-            tue_thu_mask
-        ].groupby('date_only')['parsed_time'].min()
+        # Calculate attendance rate only for London, Hybrid, Full-Time employees
+        attendance_rate = None
+        if is_london_hybrid_ft and employed_tue_thu > 0:
+            attendance_rate = round(attended_tue_thu / employed_tue_thu * 100, 1)
         
-        if not tue_thu_entries.empty:
-            # Calculate mean (excluding outliers) and get list of excluded times
-            mean_entry_str, excluded_times = calculate_mean_arrival_time(tue_thu_entries)
+        # Only calculate detailed time metrics for London, Hybrid, Full-Time employees
+        if is_london_hybrid_ft:
+            # Calculate mean and median entry times for Tue-Thu
+            tue_thu_entries = emp_data[
+                (emp_data['present'] == 'Yes') & 
+                tue_thu_mask
+            ].groupby('date_only')['parsed_time'].min()
             
-            # Debug logging for excluded times
-            if excluded_times:
-                print(f"\nExcluded arrival times for {emp_name}:")
-                for time in excluded_times:
-                    print(f"  {time}")
-            
-            # Calculate median (using all times)
-            minutes = pd.Series([
-                t.hour * 60 + t.minute 
-                for t in tue_thu_entries
-            ], index=tue_thu_entries.index)
-            
-            median_minutes = round(minutes.median())
-            median_hours = median_minutes // 60
-            median_mins = median_minutes % 60
-            median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
-        else:
-            mean_entry_str = None
-            median_entry_str = None
+            if not tue_thu_entries.empty:
+                # Calculate mean (excluding outliers) and get list of excluded times
+                mean_entry_str, excluded_times = calculate_mean_arrival_time(tue_thu_entries)
+                
+                # Debug logging for excluded times
+                if excluded_times:
+                    print(f"\nExcluded arrival times for {emp_name}:")
+                    for time in excluded_times:
+                        print(f"  {time}")
+                
+                # Calculate median (using all times)
+                minutes = pd.Series([
+                    t.hour * 60 + t.minute 
+                    for t in tue_thu_entries
+                ], index=tue_thu_entries.index)
+                
+                median_minutes = round(minutes.median())
+                median_hours = median_minutes // 60
+                median_mins = median_minutes % 60
+                median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
         
         results.append({
             'employee_id': emp_id,
             'name': emp_name,
+            'is_london_hybrid_ft': is_london_hybrid_ft,
             'total_days_attended': attended_days,
             'tue_thu_days_attended': attended_tue_thu,
             'potential_tue_thu_days': employed_tue_thu,
             'mean_arrival_time': mean_entry_str,
             'median_arrival_time': median_entry_str,
-            'attendance_rate': round(attended_tue_thu / employed_tue_thu * 100, 1) if employed_tue_thu > 0 else 0
+            'attendance_rate': attendance_rate
         })
     
-    # Convert to DataFrame and sort by attendance rate
-    result_df = pd.DataFrame(results).sort_values('attendance_rate', ascending=False)
+    # Convert to DataFrame and sort by London, Hybrid, Full-Time first, then attendance rate
+    result_df = pd.DataFrame(results)
+    
+    # Sort by London, Hybrid, Full-Time and then by attendance rate
+    result_df = result_df.sort_values(
+        ['is_london_hybrid_ft', 'attendance_rate'], 
+        ascending=[False, False]
+    )
     
     # Round numeric columns
-    numeric_cols = ['total_days_attended', 'tue_thu_days_attended', 'potential_tue_thu_days', 'attendance_rate']
-    result_df[numeric_cols] = result_df[numeric_cols].round(1)
+    numeric_cols = ['total_days_attended', 'tue_thu_days_attended', 'potential_tue_thu_days']
+    for col in numeric_cols:
+        if col in result_df.columns:
+            result_df[col] = result_df[col].round(1)
+    
+    # Format attendance rate as percentage
+    result_df['attendance_rate'] = result_df['attendance_rate'].apply(
+        lambda x: f"{x:.1f}%" if pd.notnull(x) else None
+    )
+    
+    # Remove the is_london_hybrid_ft column from the final output
+    result_df = result_df.drop(columns=['is_london_hybrid_ft'])
     
     # Rename columns to be more readable
     column_mapping = {
@@ -621,11 +671,6 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         'median_arrival_time': 'Median Arrival Time',
         'attendance_rate': 'Attendance Rate (%)'
     }
-    
-    # Format percentage columns
-    result_df['attendance_rate'] = result_df['attendance_rate'].apply(
-        lambda x: f"{x:.1f}%" if pd.notnull(x) else None
-    )
     
     return result_df.rename(columns=column_mapping)
 
@@ -651,15 +696,20 @@ def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
         
-        # Filter for London & Hybrid employees
-        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        # Filter for London, Hybrid, Full-Time employees
+        location_mask = (df['Location'] == 'London UK')
+        working_mask = (df['Working Status'] == 'Hybrid')
+        full_time_mask = (df['is_full_time'] == True)
+        
+        # Combined mask for London, Hybrid, Full-Time
+        london_hybrid_ft_mask = location_mask & working_mask & full_time_mask
         
         # Calculate metrics
-        eligible_employees = df[active_mask & london_hybrid_mask]['employee_id'].nunique()
+        eligible_employees = df[active_mask & london_hybrid_ft_mask]['employee_id'].nunique()
         present_employees = df[
             (df['date_only'] == date) &
             active_mask & 
-            london_hybrid_mask &
+            london_hybrid_ft_mask &
             (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
@@ -722,26 +772,32 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
                         print("  ---")
             
             # Check categorization
-            london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+            london_hybrid_ft_mask = (
+                (df['Location'] == 'London UK') & 
+                (df['Working Status'] == 'Hybrid') &
+                (df['is_full_time'] == True)
+            )
             
-            london_hybrid_present = df[
-                date_mask & active_mask & london_hybrid_mask & (df['present'] == 'Yes')
+            london_hybrid_ft_present = df[
+                date_mask & active_mask & london_hybrid_ft_mask & (df['present'] == 'Yes')
             ]['employee_id'].unique()
-            print(f"\nLondon+Hybrid employees counted: {len(london_hybrid_present)}")
+            print(f"\nLondon, Hybrid, Full-Time employees counted: {len(london_hybrid_ft_present)}")
             
             others_present = df[
-                date_mask & active_mask & ~london_hybrid_mask & (df['present'] == 'Yes')
+                date_mask & active_mask & ~london_hybrid_ft_mask & (df['present'] == 'Yes')
             ]['employee_id'].unique()
             print(f"Other employees counted: {len(others_present)}")
             
-            # Check for NaN values in Location or Working Status
+            # Check for NaN values in relevant columns
             nan_location = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Location'].isna()]['employee_id'].unique()
             nan_working = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Working Status'].isna()]['employee_id'].unique()
+            nan_full_time = df[date_mask & active_mask & (df['present'] == 'Yes') & df['is_full_time'].isna()]['employee_id'].unique()
             print(f"Employees with NaN Location: {len(nan_location)}")
             print(f"Employees with NaN Working Status: {len(nan_working)}")
+            print(f"Employees with NaN is_full_time: {len(nan_full_time)}")
             
             # Total employees that should be counted
-            should_be_counted = set(london_hybrid_present) | set(others_present)
+            should_be_counted = set(london_hybrid_ft_present) | set(others_present)
             missing = set(active_present) - should_be_counted
             print(f"MISSING EMPLOYEES: {len(missing)}")
             if missing:
@@ -752,6 +808,7 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
                         emp_row = emp_rows.iloc[0]
                         print(f"  ID: {emp_id}, Name: {emp_row.get('Last name, First name', 'N/A')}")
                         print(f"  Location: {emp_row.get('Location', 'N/A')}, Working Status: {emp_row.get('Working Status', 'N/A')}")
+                        print(f"  Full-Time: {emp_row.get('is_full_time', 'N/A')}")
                         print(f"  Present: {emp_row.get('present', 'N/A')}, Combined hire date: {emp_row.get('Combined hire date', 'N/A')}")
                         print(f"  Most recent day worked: {emp_row.get('Most recent day worked', 'N/A')}")
                         print("  ---")
@@ -763,37 +820,42 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             ((df['Most recent day worked'].isna()) | (pd.to_datetime(df['Most recent day worked']) >= date))
         )
         
-        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        # London, Hybrid, Full-Time mask
+        london_hybrid_ft_mask = (
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') &
+            (df['is_full_time'] == True)
+        )
         
-        # Count London + Hybrid who were present
-        london_hybrid_count = df[
-            date_mask & active_mask & london_hybrid_mask & (df['present'] == 'Yes')
+        # Count London, Hybrid, Full-Time who were present
+        london_hybrid_ft_count = df[
+            date_mask & active_mask & london_hybrid_ft_mask & (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
         # Count others who were present
         others_count = df[
-            date_mask & active_mask & ~london_hybrid_mask & (df['present'] == 'Yes')
+            date_mask & active_mask & ~london_hybrid_ft_mask & (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
-        # Get total eligible London + Hybrid employees for that date
-        total_eligible_london_hybrid = df[
-            active_mask & london_hybrid_mask
+        # Get total eligible London, Hybrid, Full-Time employees for that date
+        total_eligible_london_hybrid_ft = df[
+            active_mask & london_hybrid_ft_mask
         ]['employee_id'].nunique()
         
         # Calculate percentage based on eligible employees
         attendance_percentage = (
-            (london_hybrid_count / total_eligible_london_hybrid * 100)
-            if total_eligible_london_hybrid > 0 else 0
+            (london_hybrid_ft_count / total_eligible_london_hybrid_ft * 100)
+            if total_eligible_london_hybrid_ft > 0 else 0
         )
         
         daily_counts.append({
             'date': date,
             'day_of_week': pd.Timestamp(date).strftime('%A'),
-            'london_hybrid_count': london_hybrid_count,
+            'london_hybrid_ft_count': london_hybrid_ft_count,
             'other_count': others_count,
-            'eligible_london_hybrid': total_eligible_london_hybrid,
-            'london_hybrid_percentage': round(attendance_percentage, 1),
-            'total_attendance': london_hybrid_count + others_count
+            'eligible_london_hybrid_ft': total_eligible_london_hybrid_ft,
+            'london_hybrid_ft_percentage': round(attendance_percentage, 1),
+            'total_attendance': london_hybrid_ft_count + others_count
         })
     
     return pd.DataFrame(daily_counts)
@@ -832,12 +894,16 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
                     )
                 )
                 
-                london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+                # London, Hybrid, Full-Time mask
+                london_hybrid_ft_mask = (
+                    (df['Location'] == 'London UK') & 
+                    (df['Working Status'] == 'Hybrid') &
+                    (df['is_full_time'] == True)
+                )
                 
-                # Count eligible employees for this day
+                # Count eligible London, Hybrid, Full-Time employees for this day
                 eligible_count = df[
-                    active_mask &
-                    london_hybrid_mask
+                    active_mask & london_hybrid_ft_mask
                 ]['employee_id'].nunique()
                 
                 daily_eligible.append(eligible_count)
@@ -854,13 +920,18 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
         
-        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        # London, Hybrid, Full-Time mask
+        london_hybrid_ft_mask = (
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') &
+            (df['is_full_time'] == True)
+        )
         
-        # Calculate daily attendance for London+Hybrid
-        london_hybrid_daily = df[
+        # Calculate daily attendance for London, Hybrid, Full-Time
+        london_hybrid_ft_daily = df[
             week_mask & 
             active_mask &
-            london_hybrid_mask & 
+            london_hybrid_ft_mask & 
             (df['present'] == 'Yes')
         ].groupby('date_only')['employee_id'].nunique()
         
@@ -868,27 +939,27 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
         others_daily = df[
             week_mask & 
             active_mask &
-            ~london_hybrid_mask & 
+            ~london_hybrid_ft_mask & 
             (df['present'] == 'Yes')
         ].groupby('date_only')['employee_id'].nunique()
         
         # Calculate averages
-        london_hybrid_avg = london_hybrid_daily.mean() if not london_hybrid_daily.empty else 0
+        london_hybrid_ft_avg = london_hybrid_ft_daily.mean() if not london_hybrid_ft_daily.empty else 0
         others_avg = others_daily.mean() if not others_daily.empty else 0
         
         # Calculate attendance percentage using average eligible employees
         attendance_percentage = (
-            (london_hybrid_avg / avg_eligible * 100)
+            (london_hybrid_ft_avg / avg_eligible * 100)
             if avg_eligible > 0 else 0
         )
         
         weekly_counts.append({
             'week_start': week_start,
-            'london_hybrid_avg': round(london_hybrid_avg, 1),
+            'london_hybrid_ft_avg': round(london_hybrid_ft_avg, 1),
             'other_avg': round(others_avg, 1),
-            'avg_eligible_london_hybrid': avg_eligible,  # New field
-            'london_hybrid_percentage': round(attendance_percentage, 1),
-            'total_avg_attendance': round(london_hybrid_avg + others_avg, 1)
+            'avg_eligible_london_hybrid_ft': avg_eligible,
+            'london_hybrid_ft_percentage': round(attendance_percentage, 1),
+            'total_avg_attendance': round(london_hybrid_ft_avg + others_avg, 1)
         })
     
     return pd.DataFrame(weekly_counts)
@@ -905,36 +976,42 @@ def calculate_period_summary(df: pd.DataFrame, start_date: pd.Timestamp, end_dat
     weekday_stats = []
     for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
         day_mask = (df['day_of_week'] == day)
-        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # London, Hybrid, Full-Time mask
+        london_hybrid_ft_mask = (
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') &
+            (df['is_full_time'] == True)
+        )
         
         # Get attendance for this weekday
-        london_hybrid_attendance = df[
+        london_hybrid_ft_attendance = df[
             day_mask & 
-            london_hybrid_mask & 
+            london_hybrid_ft_mask & 
             (df['present'] == 'Yes')
         ].groupby('date_only')['employee_id'].nunique().mean()
         
         others_attendance = df[
             day_mask & 
-            ~london_hybrid_mask & 
+            ~london_hybrid_ft_mask & 
             (df['present'] == 'Yes')
         ].groupby('date_only')['employee_id'].nunique().mean()
         
-        # Get eligible London+Hybrid employees
-        eligible_london_hybrid = df[
+        # Get eligible London, Hybrid, Full-Time employees
+        eligible_london_hybrid_ft = df[
             day_mask &
-            london_hybrid_mask
+            london_hybrid_ft_mask
         ]['employee_id'].nunique()
         
         # Calculate percentage
         attendance_percentage = (
-            (london_hybrid_attendance / eligible_london_hybrid * 100)
-            if eligible_london_hybrid > 0 else 0
+            (london_hybrid_ft_attendance / eligible_london_hybrid_ft * 100)
+            if eligible_london_hybrid_ft > 0 else 0
         )
         
         weekday_stats.append({
             'weekday': day,
-            'london_hybrid_count': round(london_hybrid_attendance, 1),
+            'london_hybrid_ft_count': round(london_hybrid_ft_attendance, 1),
             'other_count': round(others_attendance, 1),
             'attendance_percentage': round(attendance_percentage, 1)
         })

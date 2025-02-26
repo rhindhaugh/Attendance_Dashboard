@@ -57,6 +57,27 @@ def load_employee_info(filepath: str) -> pd.DataFrame:
     """
     return pd.read_csv(filepath)
 
+def load_employment_history(filepath: str) -> pd.DataFrame:
+    """
+    Load employment history data from CSV file.
+    
+    Args:
+        filepath: Path to CSV file with employment history
+        
+    Returns:
+        DataFrame with employment history data
+    """
+    # Load the CSV file
+    df = pd.read_csv(filepath)
+    
+    # Ensure Date is parsed as datetime
+    df['Date'] = pd.to_datetime(df['Date'])
+    
+    print(f"Loaded employment history data: {len(df)} rows")
+    print(f"Employment statuses: {df['Employment Status'].unique()}")
+    
+    return df
+
 def calculate_default_date_range(days=365):
     """
     Calculate default date range (last year)

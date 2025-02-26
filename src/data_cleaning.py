@@ -186,9 +186,20 @@ def clean_employee_info(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
 
 def merge_key_card_with_employee_info(
     key_card_df: pd.DataFrame,
-    employee_df: pd.DataFrame
+    employee_df: pd.DataFrame,
+    history_df: pd.DataFrame = None
 ) -> pd.DataFrame:
-    """Merge key card data with employee information using optimized approach."""
+    """
+    Merge key card data with employee information and add full-time indicators.
+    
+    Args:
+        key_card_df: DataFrame with key card data
+        employee_df: DataFrame with employee info
+        history_df: Optional DataFrame with employment history
+        
+    Returns:
+        Merged DataFrame with optional full-time indicators
+    """
     print("\nBefore merge:")
     print("Key card shape:", key_card_df.shape)
     print("Employee shape:", employee_df.shape)
@@ -198,7 +209,6 @@ def merge_key_card_with_employee_info(
         raise KeyError("Both DataFrames must have 'employee_id' column")
     
     # Optimize: Only keep employee_df rows that have matching employee_ids in key_card_df
-    # This reduces the size of the right-side DataFrame in the merge
     unique_ids_in_keycard = key_card_df['employee_id'].unique()
     filtered_employee_df = employee_df[employee_df['employee_id'].isin(unique_ids_in_keycard)]
     
@@ -215,7 +225,133 @@ def merge_key_card_with_employee_info(
     print("After merge:")
     print("Merged shape:", merged_df.shape)
     
+    # If history data is provided, add full-time indicators
+    if history_df is not None:
+        # Create name to ID mapping
+        employee_name_to_id = create_employee_name_to_id_mapping(employee_df)
+        
+        # Create status lookup
+        status_lookup = create_employment_status_lookup(history_df, employee_name_to_id)
+        
+        # Add full-time indicators
+        merged_df = add_full_time_indicators(merged_df, status_lookup)
+    
     return merged_df
+
+def create_employee_name_to_id_mapping(employee_df: pd.DataFrame) -> dict:
+    """
+    Create mapping from employee names to IDs.
+    
+    Args:
+        employee_df: DataFrame with employee info
+        
+    Returns:
+        Dictionary mapping employee names to IDs
+    """
+    mapping = {}
+    for _, row in employee_df.iterrows():
+        if pd.notna(row['Last name, First name']) and pd.notna(row['employee_id']):
+            mapping[row['Last name, First name']] = row['employee_id']
+    
+    print(f"Created name-to-ID mapping for {len(mapping)} employees")
+    return mapping
+
+def create_employment_status_lookup(history_df: pd.DataFrame, employee_name_to_id: dict) -> dict:
+    """
+    Create a lookup that allows determining an employee's status on any date.
+    
+    Args:
+        history_df: DataFrame with employment history
+        employee_name_to_id: Dictionary mapping employee names to IDs
+        
+    Returns:
+        Dictionary mapping employee_id to sorted list of (date, status) tuples
+    """
+    # Create the lookup dictionary
+    status_lookup = {}
+    
+    # Process each status change
+    for _, row in history_df.iterrows():
+        emp_name = row['Employee']
+        date = row['Date']
+        status = row['Employment Status']
+        
+        # Skip if we can't map the name to an ID
+        if emp_name not in employee_name_to_id:
+            continue
+            
+        emp_id = employee_name_to_id[emp_name]
+        
+        # Store the status change
+        if emp_id not in status_lookup:
+            status_lookup[emp_id] = []
+            
+        status_lookup[emp_id].append((date, status))
+    
+    # Sort status changes by date for each employee
+    for emp_id in status_lookup:
+        status_lookup[emp_id].sort(key=lambda x: x[0])
+    
+    print(f"Created status lookup for {len(status_lookup)} employees")
+    return status_lookup
+
+def is_full_time_on_date(emp_id: float, date: pd.Timestamp, status_lookup: dict) -> bool:
+    """
+    Determine if an employee was Full-Time on a specific date.
+    
+    Args:
+        emp_id: Employee ID
+        date: Date to check
+        status_lookup: Dictionary from create_employment_status_lookup
+        
+    Returns:
+        True if employee was Full-Time on date, False otherwise
+    """
+    if emp_id not in status_lookup:
+        return False
+        
+    # Find the most recent status change before or on this date
+    most_recent_status = None
+    for change_date, status in status_lookup[emp_id]:
+        if change_date <= date:
+            most_recent_status = status
+        else:
+            break
+            
+    return most_recent_status == 'Full-Time'
+
+def add_full_time_indicators(df: pd.DataFrame, status_lookup: dict) -> pd.DataFrame:
+    """
+    Add a column indicating if each employee was Full-Time on each date.
+    
+    Args:
+        df: DataFrame with key card and employee data
+        status_lookup: Dictionary from create_employment_status_lookup
+        
+    Returns:
+        DataFrame with 'is_full_time' column added
+    """
+    # Create a copy to avoid modifying the original
+    result = df.copy()
+    
+    # Add the is_full_time column
+    result['is_full_time'] = False
+    
+    # Check each row to determine if the employee was Full-Time on that date
+    for index, row in result.iterrows():
+        if pd.isna(row['employee_id']):
+            continue
+            
+        result.at[index, 'is_full_time'] = is_full_time_on_date(
+            row['employee_id'],
+            row['date_only'],
+            status_lookup
+        )
+    
+    print(f"Added is_full_time indicator to {len(result)} rows")
+    print(f"Employees marked as Full-Time: {result['is_full_time'].sum()} rows")
+    
+    return result
 
 def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Add additional time-based analysis columns to the DataFrame."""

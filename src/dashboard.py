@@ -11,7 +11,8 @@ import altair as alt
 from data_ingestion import (
     load_key_card_data,
     load_employee_info,
-    calculate_default_date_range
+    calculate_default_date_range,
+    load_employment_history
 )
 from data_cleaning import (
     clean_key_card_data,
@@ -48,7 +49,7 @@ def load_data(start_date=None, end_date=None, last_n_days=None):
         last_n_days: If provided, load only the last N days of data
         
     Returns:
-        Tuple of (key_card_df, employee_df)
+        Tuple of (key_card_df, employee_df, history_df)
     """
     start_time = time.time()
     
@@ -66,12 +67,17 @@ def load_data(start_date=None, end_date=None, last_n_days=None):
     employee_df = load_employee_info(str(employee_path))
     print(f"\nLoaded employee data: {len(employee_df)} rows")
     
+    # Load employment history data
+    history_path = Path("/Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard/data/raw/employment_status_history.csv")
+    history_df = load_employment_history(str(history_path))
+    print(f"\nLoaded employment history data: {len(history_df)} rows")
+    
     print(f"Data loading completed in {time.time() - start_time:.2f} seconds")
     
-    return key_card_df, employee_df
+    return key_card_df, employee_df, history_df
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def process_data(key_card_df, employee_df):
+def process_data(key_card_df, employee_df, history_df=None):
     """Process and merge data with caching."""
     start_time = time.time()
     
@@ -85,8 +91,8 @@ def process_data(key_card_df, employee_df):
     # Clean employee data, passing the max_data_date
     employee_df = clean_employee_info(employee_df, max_data_date)
     
-    # Merge the datasets
-    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+    # Merge the datasets, including employment history if provided
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df, history_df)
     
     # Clean up memory
     del key_card_df
@@ -161,7 +167,7 @@ def save_processed_data(attendance_table, daily_attendance_pct, avg_arrival_hour
 def load_and_process_data():
     """Load and process all data, returning the combined DataFrame."""
     # Load raw data
-    key_card_df, employee_df = load_data()
+    key_card_df, employee_df, history_df = load_data()
     
     # Clean key card data first
     key_card_df = clean_key_card_data(key_card_df)
@@ -174,7 +180,7 @@ def load_and_process_data():
     employee_df = clean_employee_info(employee_df, max_data_date)
     
     # Merge datasets
-    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df, history_df)
     
     # Create attendance table to get 'present' field
     attendance_table = build_attendance_table(combined_df)
@@ -291,12 +297,13 @@ def main():
     data_load_state = st.text("Loading data... This may take a moment.")
     
     try:
-        key_card_df, employee_df = load_data(start_date, end_date, last_n_days)
+        key_card_df, employee_df, history_df = load_data(start_date, end_date, last_n_days)
         data_load_state.text("Processing data...")
-        combined_df = process_data(key_card_df, employee_df)
+        combined_df = process_data(key_card_df, employee_df, history_df)
         
         del key_card_df
         del employee_df
+        del history_df
         gc.collect()
         
         data_load_state.text("Calculating analytics...")
@@ -340,7 +347,7 @@ def main():
                 fig_daily_counts = px.bar(
                     tue_thu_daily,
                     x='date',
-                    y=['other_count', 'london_hybrid_count'],  # Order matters for stacking - other on top
+                    y=['other_count', 'london_hybrid_ft_count'],  # Order matters for stacking - other on top
                     title='Daily Attendance by Employee Type',
                     labels={
                         'date': 'Date',
@@ -352,8 +359,8 @@ def main():
                 
                 # Update trace names to be more readable
                 fig_daily_counts.update_traces(
-                    name='London, Hybrid',
-                    selector=dict(name='london_hybrid_count')
+                    name='London, Hybrid, Full-Time',
+                    selector=dict(name='london_hybrid_ft_count')
                 )
                 fig_daily_counts.update_traces(
                     name='Other Employees',
@@ -379,10 +386,10 @@ def main():
             column_mapping = {
                 'date': 'Date',
                 'day_of_week': 'Day of Week',
-                'london_hybrid_count': 'London, Hybrid Attendance (#)',
-                'eligible_london_hybrid': 'London, Hybrid (total #)',
-                'london_hybrid_percentage': 'London, Hybrid Attendance (%)',
-                'other_count': 'Non-London, Hybrid Attendance (#)',
+                'london_hybrid_ft_count': 'London, Hybrid, Full-Time Attendance (#)',
+                'eligible_london_hybrid_ft': 'London, Hybrid, Full-Time (total #)',
+                'london_hybrid_ft_percentage': 'London, Hybrid, Full-Time Attendance (%)',
+                'other_count': 'Non-London, Hybrid, Full-Time Attendance (#)',
                 'total_attendance': 'Total Attendance (#)'
             }
             
@@ -390,12 +397,12 @@ def main():
             
             # Format numbers while keeping original values
             count_columns = [
-                'London, Hybrid Attendance (#)',
-                'London, Hybrid (total #)',
-                'Non-London, Hybrid Attendance (#)',
+                'London, Hybrid, Full-Time Attendance (#)',
+                'London, Hybrid, Full-Time (total #)',
+                'Non-London, Hybrid, Full-Time Attendance (#)',
                 'Total Attendance (#)'
             ]
-            percentage_columns = ['London, Hybrid Attendance (%)']
+            percentage_columns = ['London, Hybrid, Full-Time Attendance (%)']
             
             # Create a styled version for display
             styled_df = display_df.copy()
@@ -408,10 +415,10 @@ def main():
             column_order = [
                 'Date',
                 'Day of Week',
-                'London, Hybrid Attendance (#)',
-                'London, Hybrid (total #)',
-                'London, Hybrid Attendance (%)',
-                'Non-London, Hybrid Attendance (#)',
+                'London, Hybrid, Full-Time Attendance (#)',
+                'London, Hybrid, Full-Time (total #)',
+                'London, Hybrid, Full-Time Attendance (%)',
+                'Non-London, Hybrid, Full-Time Attendance (#)',
                 'Total Attendance (#)'
             ]
             styled_df = styled_df[column_order]
@@ -423,10 +430,10 @@ def main():
                 fig_weekly_pct = px.line(
                     analyses['weekly_counts'],
                     x='week_start',
-                    y='london_hybrid_percentage',
+                    y='london_hybrid_ft_percentage',
                     title='Weekly Office Attendance Percentage',
                     labels={
-                        'london_hybrid_percentage': 'Attendance %',
+                        'london_hybrid_ft_percentage': 'Attendance %',
                         'week_start': 'Week Starting'
                     }
                 )
@@ -437,7 +444,7 @@ def main():
                 fig_weekly_counts = px.bar(
                     analyses['weekly_counts'],
                     x='week_start',
-                    y=['other_avg', 'london_hybrid_avg'],  # Order matters for stacking - other on top
+                    y=['other_avg', 'london_hybrid_ft_avg'],  # Order matters for stacking - other on top
                     title='Average Daily Attendance by Employee Type (Weekly)',
                     labels={
                         'week_start': 'Week Starting',
@@ -448,8 +455,8 @@ def main():
                 )
                 
                 fig_weekly_counts.update_traces(
-                    name='London, Hybrid',
-                    selector=dict(name='london_hybrid_avg')
+                    name='London, Hybrid, Full-Time',
+                    selector=dict(name='london_hybrid_ft_avg')
                 )
                 fig_weekly_counts.update_traces(
                     name='Other Employees',
@@ -468,10 +475,10 @@ def main():
             st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
             display_cols_weekly = {
                 'week_start': 'Week Starting',
-                'london_hybrid_avg': 'Avg. London, Hybrid Attendance (#)',
-                'avg_eligible_london_hybrid': 'Avg. London, Hybrid (total #)',
-                'london_hybrid_percentage': 'Avg. London, Hybrid Attendance (%)',
-                'other_avg': 'Avg. Non-London, Hybrid Attendance (#)',
+                'london_hybrid_ft_avg': 'Avg. London, Hybrid, Full-Time Attendance (#)',
+                'avg_eligible_london_hybrid_ft': 'Avg. London, Hybrid, Full-Time (total #)',
+                'london_hybrid_ft_percentage': 'Avg. London, Hybrid, Full-Time Attendance (%)',
+                'other_avg': 'Avg. Non-London, Hybrid, Full-Time Attendance (#)',
                 'total_avg_attendance': 'Avg. Total Attendance (#)'
             }
             weekly_display = analyses['weekly_counts'][display_cols_weekly.keys()].rename(columns=display_cols_weekly)
@@ -484,12 +491,12 @@ def main():
             
             # Format numbers
             count_columns = [
-                'Avg. London, Hybrid Attendance (#)',
-                'Avg. London, Hybrid (total #)',
-                'Avg. Non-London, Hybrid Attendance (#)',
+                'Avg. London, Hybrid, Full-Time Attendance (#)',
+                'Avg. London, Hybrid, Full-Time (total #)',
+                'Avg. Non-London, Hybrid, Full-Time Attendance (#)',
                 'Avg. Total Attendance (#)'
             ]
-            percentage_columns = ['Avg. London, Hybrid Attendance (%)']
+            percentage_columns = ['Avg. London, Hybrid, Full-Time Attendance (%)']
             
             for col in count_columns:
                 styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{round(x):,}")
@@ -499,10 +506,10 @@ def main():
             # Reorder columns
             weekly_column_order = [
                 'Week Starting',
-                'Avg. London, Hybrid Attendance (#)',
-                'Avg. London, Hybrid (total #)',
-                'Avg. London, Hybrid Attendance (%)',
-                'Avg. Non-London, Hybrid Attendance (#)',
+                'Avg. London, Hybrid, Full-Time Attendance (#)',
+                'Avg. London, Hybrid, Full-Time (total #)',
+                'Avg. London, Hybrid, Full-Time Attendance (%)',
+                'Avg. Non-London, Hybrid, Full-Time Attendance (#)',
                 'Avg. Total Attendance (#)'
             ]
             styled_weekly = styled_weekly[weekly_column_order]
@@ -514,7 +521,7 @@ def main():
                 fig_period = px.bar(
                     analyses['period_summary'],
                     x='weekday',
-                    y=['london_hybrid_count', 'other_count'],
+                    y=['london_hybrid_ft_count', 'other_count'],
                     title='Average Daily Attendance by Weekday',
                     labels={
                         'weekday': 'Day of Week',
@@ -525,8 +532,8 @@ def main():
                 )
                 
                 fig_period.update_traces(
-                    name='London + Hybrid',
-                    selector=dict(name='london_hybrid_count')
+                    name='London, Hybrid, Full-Time',
+                    selector=dict(name='london_hybrid_ft_count')
                 )
                 fig_period.update_traces(
                     name='Other Employees',
@@ -539,9 +546,9 @@ def main():
                 st.subheader("Weekday Averages")
                 display_cols_period = {
                     'weekday': 'Day of Week',
-                    'london_hybrid_count': 'Avg. London + Hybrid Count',
+                    'london_hybrid_ft_count': 'Avg. London, Hybrid, Full-Time Count',
                     'other_count': 'Avg. Other Count',
-                    'attendance_percentage': 'London + Hybrid Attendance %'
+                    'attendance_percentage': 'London, Hybrid, Full-Time Attendance %'
                 }
                 period_display = analyses['period_summary'][display_cols_period.keys()].rename(columns=display_cols_period)
                 
@@ -549,8 +556,8 @@ def main():
                 styled_period = period_display.copy()
                 
                 # Format numbers
-                count_columns = ['Avg. London + Hybrid Count', 'Avg. Other Count']
-                percentage_columns = ['London + Hybrid Attendance %']
+                count_columns = ['Avg. London, Hybrid, Full-Time Count', 'Avg. Other Count']
+                percentage_columns = ['London, Hybrid, Full-Time Attendance %']
                 
                 for col in count_columns:
                     styled_period[col] = styled_period[col].apply(lambda x: f"{round(x):,}")
