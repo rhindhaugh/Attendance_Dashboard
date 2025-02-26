@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import time
 import gc  # For garbage collection
+import altair as alt
 
 # Data cleaning and ingestion imports
 from data_ingestion import (
@@ -327,6 +328,46 @@ def main():
                 )
                 st.plotly_chart(fig_daily_pct)
             
+            # Add daily office attendance count chart (Tue-Thu only)
+            st.subheader("Daily Office Attendance (Count) - Tuesdays to Thursdays")
+            
+            # Filter for only Tue-Thu
+            tue_thu_daily = analyses['daily_counts'][
+                analyses['daily_counts']['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+            ]
+            
+            if len(tue_thu_daily) > 0:
+                fig_daily_counts = px.bar(
+                    tue_thu_daily,
+                    x='date',
+                    y=['other_count', 'london_hybrid_count'],  # Order matters for stacking - other on top
+                    title='Daily Attendance by Employee Type',
+                    labels={
+                        'date': 'Date',
+                        'value': 'Attendance Count',
+                        'variable': 'Employee Type'
+                    },
+                    barmode='stack'
+                )
+                
+                # Update trace names to be more readable
+                fig_daily_counts.update_traces(
+                    name='London, Hybrid',
+                    selector=dict(name='london_hybrid_count')
+                )
+                fig_daily_counts.update_traces(
+                    name='Other Employees',
+                    selector=dict(name='other_count')
+                )
+                
+                # Update x-axis to show month and year format
+                fig_daily_counts.update_xaxes(
+                    tickformat="%b %Y",
+                    tickangle=-45
+                )
+                
+                st.plotly_chart(fig_daily_counts, use_container_width=True)
+            
             # Daily details table
             st.subheader("Daily Attendance Details")
             
@@ -396,7 +437,7 @@ def main():
                 fig_weekly_counts = px.bar(
                     analyses['weekly_counts'],
                     x='week_start',
-                    y=['london_hybrid_avg', 'other_avg'],
+                    y=['other_avg', 'london_hybrid_avg'],  # Order matters for stacking - other on top
                     title='Average Daily Attendance by Employee Type (Weekly)',
                     labels={
                         'week_start': 'Week Starting',
@@ -407,7 +448,7 @@ def main():
                 )
                 
                 fig_weekly_counts.update_traces(
-                    name='London + Hybrid',
+                    name='London, Hybrid',
                     selector=dict(name='london_hybrid_avg')
                 )
                 fig_weekly_counts.update_traces(
@@ -415,7 +456,13 @@ def main():
                     selector=dict(name='other_avg')
                 )
                 
-                st.plotly_chart(fig_weekly_counts)
+                # Update x-axis to show month and year format
+                fig_weekly_counts.update_xaxes(
+                    tickformat="%b %Y",
+                    tickangle=-45
+                )
+                
+                st.plotly_chart(fig_weekly_counts, use_container_width=True)
             
             # Weekly details table
             st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
