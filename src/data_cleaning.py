@@ -50,9 +50,19 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     # Extract employee_id from 'User' column with improved regex
     if 'User' in df.columns:
         # Extract numeric ID and convert to numeric type - use vectorized operations
-        # Optimize with a more targeted regex
         result['employee_id'] = pd.to_numeric(df['User'].str.extract(r'^(\d+)', expand=False), 
                                            errors='coerce')
+        
+        # Handle special cases
+        special_cases = {
+            "Arorra, Aakash": 378, 
+            "Payne, James": 735    
+        }
+
+        # After the regular extraction, check for special cases
+        for special_name, special_id in special_cases.items():
+            special_mask = df['User'].str.contains(special_name, regex=False)
+            result.loc[special_mask, 'employee_id'] = special_id
         
         print(f"\nEmployee ID extraction stats:")
         print(f"Total rows: {len(df)}")

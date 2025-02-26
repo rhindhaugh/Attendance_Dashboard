@@ -682,8 +682,68 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     daily_counts = []
     
     for date in sorted(df['date_only'].unique()):
+        # Define date_mask first so it's available for both debug and regular code
         date_mask = (df['date_only'] == date)
         
+        # Debug code for September 12, 2024
+        if pd.Timestamp(date).strftime('%d/%m/%Y') == '12/09/2024':
+            print("\n===== DEBUGGING SEPTEMBER 12, 2024 =====")
+            
+            # Get all employees present that day regardless of other criteria
+            all_present = df[date_mask & (df['present'] == 'Yes')]['employee_id'].unique()
+            print(f"Total unique employees present on Sep 12: {len(all_present)}")
+            
+            # Check employment dates
+            active_mask = (
+                (pd.to_datetime(df['Combined hire date']) <= date) &
+                (
+                    (df['Most recent day worked'].isna()) |
+                    (pd.to_datetime(df['Most recent day worked']) >= date)
+                )
+            )
+            
+            active_present = df[date_mask & active_mask & (df['present'] == 'Yes')]['employee_id'].unique()
+            print(f"Employees present and active based on hire/departure dates: {len(active_present)}")
+            
+            # How many were excluded due to employment dates?
+            employment_excluded = set(all_present) - set(active_present)
+            print(f"Excluded due to employment dates: {len(employment_excluded)}")
+            
+            # Check categorization
+            london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+            
+            london_hybrid_present = df[
+                date_mask & active_mask & london_hybrid_mask & (df['present'] == 'Yes')
+            ]['employee_id'].unique()
+            print(f"London+Hybrid employees counted: {len(london_hybrid_present)}")
+            
+            others_present = df[
+                date_mask & active_mask & ~london_hybrid_mask & (df['present'] == 'Yes')
+            ]['employee_id'].unique()
+            print(f"Other employees counted: {len(others_present)}")
+            
+            # Check for NaN values in Location or Working Status
+            nan_location = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Location'].isna()]['employee_id'].unique()
+            nan_working = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Working Status'].isna()]['employee_id'].unique()
+            print(f"Employees with NaN Location: {len(nan_location)}")
+            print(f"Employees with NaN Working Status: {len(nan_working)}")
+            
+            # Total employees that should be counted
+            should_be_counted = set(london_hybrid_present) | set(others_present)
+            missing = set(active_present) - should_be_counted
+            print(f"MISSING EMPLOYEES: {len(missing)}")
+            if missing:
+                print("Sample of missing employees:")
+                for emp_id in list(missing)[:5]:
+                    emp_rows = df[(df['employee_id'] == emp_id) & date_mask]
+                    if not emp_rows.empty:
+                        emp_row = emp_rows.iloc[0]
+                        print(f"  ID: {emp_id}, Name: {emp_row.get('Last name, First name', 'N/A')}")
+                        print(f"  Location: {emp_row.get('Location', 'N/A')}, Working Status: {emp_row.get('Working Status', 'N/A')}")
+                        print(f"  Present: {emp_row.get('present', 'N/A')}, Combined hire date: {emp_row.get('Combined hire date', 'N/A')}")
+                        print(f"  Most recent day worked: {emp_row.get('Most recent day worked', 'N/A')}")
+        
+        # Continue with the original function calculation
         # Consider employment dates
         active_mask = (
             (pd.to_datetime(df['Combined hire date']) <= date) &
@@ -703,12 +763,12 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
-        # Count others who were present
+        # Count others who were present - UPDATED to make sure we catch all non-London/Hybrid
         others_count = df[
             date_mask & 
             active_mask &
-            ~london_hybrid_mask & 
-            (df['present'] == 'Yes')
+            (df['present'] == 'Yes') &
+            ~london_hybrid_mask  # Changed to ensure we catch everything else
         ]['employee_id'].nunique()
         
         # Get total eligible London + Hybrid employees for that date
@@ -728,7 +788,7 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             'day_of_week': pd.Timestamp(date).strftime('%A'),
             'london_hybrid_count': london_hybrid_count,
             'other_count': others_count,
-            'eligible_london_hybrid': total_eligible_london_hybrid,  # Added for verification
+            'eligible_london_hybrid': total_eligible_london_hybrid,
             'london_hybrid_percentage': round(attendance_percentage, 1),
             'total_attendance': london_hybrid_count + others_count
         })
@@ -767,7 +827,7 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
                         (df['Most recent day worked'].isna()) |
                         (pd.to_datetime(df['Most recent day worked']) >= date)
                     )
-                )
+                    )
                 
                 london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
                 
@@ -859,7 +919,7 @@ def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -
                     (df['Most recent day worked'].isna()) |
                     (pd.to_datetime(df['Most recent day worked']) >= date)
                 )
-            )
+                )
             
             london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
             

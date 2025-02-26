@@ -303,7 +303,13 @@ def main():
         st.success(f"Loaded {len(combined_df):,} records from {min_date.strftime('%d %b %Y')} to {max_date.strftime('%d %b %Y')}")
         
         # Create tabs and display data (keep existing tab code, but use analyses dict)
-        tab1, tab2, tab3, tab4 = st.tabs(["Daily Overview", "Weekly Overview", "Period Summary", "Employee Details"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "Daily Overview", 
+            "Weekly Overview", 
+            "Period Summary", 
+            "Employee Details",
+            "Employee Data"
+        ])
         
         with tab1:
             st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
@@ -519,6 +525,60 @@ def main():
             
             # Display the table (no additional renaming needed as it's done in create_employee_summary)
             st.dataframe(filtered_employee_summary, hide_index=True)
+        
+        with tab5:
+            st.subheader("Transformed Employee Data")
+            
+            # Get the cleaned employee data
+            employee_df = clean_employee_info(load_employee_info("data/raw/employee_info.csv"))
+            
+            # Keep only relevant columns used in calculations
+            relevant_columns = [
+                'employee_id',
+                'Last name, First name',
+                'Working Status',
+                'Location',
+                'Division',
+                'Department',
+                'Combined hire date',
+                'Most recent day worked'
+            ]
+            
+            display_df = employee_df[relevant_columns].copy()
+            
+            # Rename columns for display
+            column_mapping = {
+                'employee_id': 'Employee ID',
+                'Last name, First name': 'Employee Name',
+                'Working Status': 'Working Status',
+                'Location': 'Location',
+                'Division': 'Division',
+                'Department': 'Department',
+                'Combined hire date': 'Hire Date',
+                'Most recent day worked': 'Last Day'
+            }
+            
+            display_df = display_df.rename(columns=column_mapping)
+            
+            # Format dates
+            date_columns = ['Hire Date', 'Last Day']
+            for col in date_columns:
+                display_df[col] = pd.to_datetime(display_df[col]).dt.strftime('%d/%m/%Y')
+            
+            # Sort by Employee Name
+            display_df = display_df.sort_values('Employee Name')
+            
+            # Display the table
+            st.dataframe(display_df, hide_index=True)
+            
+            # Add download button
+            csv = display_df.to_csv(index=False)
+            st.download_button(
+                label="Download Employee Data as CSV",
+                data=csv,
+                file_name="employee_data.csv",
+                mime="text/csv"
+            )
     
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
