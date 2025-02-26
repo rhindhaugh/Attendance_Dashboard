@@ -21,11 +21,22 @@ def combine_csv_files(input_dir, output_file, subset_cols=None):
         print(f"No CSV files found in {input_dir}")
         return
     
+    # Define dtypes for columns to prevent mixed types
+    dtype_dict = {
+        'User': str,
+        'Event': str,
+        'Where': str,
+        'Date/time': str,
+        'Card Number': str,  # Column 5
+        'Door': str,         # Column 6
+        'Employee #': str
+    }
+    
     # Read each CSV file into a DataFrame
     df_list = []
     for file in csv_files:
         try:
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, dtype=dtype_dict)
             df_list.append(df)
             print(f"Loaded {file} with {len(df)} rows")
         except Exception as e:

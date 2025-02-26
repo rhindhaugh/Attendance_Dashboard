@@ -207,35 +207,82 @@ def main():
     """Main function to run the dashboard."""
     st.title("Office Attendance Dashboard")
     
-    st.sidebar.header("Data Loading Options")
-    data_range_option = st.sidebar.radio(
-        "Select data range to analyze:",
-        ["Last year (faster)", "Last 6 months (fastest)", "Last 30 days (very fast)", 
-         "Custom date range", "All data (slower)"]
+    # Add loading time warning
+    st.sidebar.warning(
+        "Note: Larger date ranges will take longer to load and process."
     )
     
-    start_date = None
-    end_date = None
-    last_n_days = None
+    st.sidebar.header("Data Range Selection")
     
-    if data_range_option == "Last year (faster)":
-        last_n_days = 365
-    elif data_range_option == "Last 6 months (fastest)":
-        last_n_days = 180
-    elif data_range_option == "Last 30 days (very fast)":
+    # Get the most recent date in the data
+    key_card_df = pd.read_csv("data/raw/key_card_access.csv")
+    most_recent_date = pd.to_datetime(key_card_df['Date/time'], dayfirst=True).max()
+    del key_card_df  # Clean up memory
+    
+    data_range_option = st.sidebar.radio(
+        "Select data range to analyze:",
+        [
+            "Year to Date",
+            "Last 30 Days",
+            "Last 3 Months",
+            "Last 6 Months",
+            "2023 Full Year",
+            "2024 Full Year",
+            "Custom Date Range"
+        ]
+    )
+    
+    # Set date parameters based on selection
+    if data_range_option == "Year to Date":
+        st.sidebar.info(
+            f"Data shown is for the one-year period ending {most_recent_date.strftime('%d %B %Y')}, "
+            "which is the most recent data available."
+        )
+        start_date = (most_recent_date - pd.Timedelta(days=365)).strftime("%Y-%m-%d")
+        end_date = most_recent_date.strftime("%Y-%m-%d")
+        last_n_days = None
+        
+    elif data_range_option == "Last 30 Days":
+        start_date = None
+        end_date = None
         last_n_days = 30
-    elif data_range_option == "Custom date range":
-        default_start, default_end = calculate_default_date_range(365)
+        
+    elif data_range_option == "Last 3 Months":
+        start_date = (most_recent_date - pd.Timedelta(days=90)).strftime("%Y-%m-%d")
+        end_date = most_recent_date.strftime("%Y-%m-%d")
+        last_n_days = None
+        
+    elif data_range_option == "Last 6 Months":
+        start_date = (most_recent_date - pd.Timedelta(days=180)).strftime("%Y-%m-%d")
+        end_date = most_recent_date.strftime("%Y-%m-%d")
+        last_n_days = None
+        
+    elif data_range_option == "2023 Full Year":
+        start_date = "2023-01-01"
+        end_date = "2023-12-31"
+        last_n_days = None
+        
+    elif data_range_option == "2024 Full Year":
+        start_date = "2024-01-01"
+        end_date = "2024-12-31"
+        last_n_days = None
+        
+    else:  # Custom Date Range
+        default_start = most_recent_date - pd.Timedelta(days=30)
         date_range = st.sidebar.date_input(
             "Select date range",
-            value=(pd.to_datetime(default_start), pd.to_datetime(default_end)),
+            value=(default_start, most_recent_date),
             min_value=pd.to_datetime("2023-01-01"),
-            max_value=datetime.now()
+            max_value=most_recent_date
         )
         if len(date_range) == 2:
             start_date = date_range[0].strftime("%Y-%m-%d")
             end_date = date_range[1].strftime("%Y-%m-%d")
-    
+        else:
+            st.error("Please select both start and end dates")
+            return
+        last_n_days = None
+
     data_load_state = st.text("Loading data... This may take a moment.")
     
     try:

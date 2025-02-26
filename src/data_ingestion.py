@@ -16,16 +16,26 @@ def load_key_card_data(filepath: str, start_date: str = None, end_date: str = No
     Returns:
         Filtered DataFrame with key card data
     """
+    # Define dtypes for columns to prevent mixed types
+    dtype_dict = {
+        'User': str,
+        'Event': str,
+        'Where': str,
+        'Date/time': str,
+        'Card Number': str,  # Column 5
+        'Door': str,         # Column 6
+        'Employee #': str
+    }
+    
+    # Load the data with specified dtypes
+    df = pd.read_csv(filepath, dtype=dtype_dict)
+    
     # If date filtering is requested, calculate dates
     if last_n_days:
         end_dt = datetime.now() if not end_date else pd.to_datetime(end_date)
         start_dt = end_dt - timedelta(days=last_n_days)
         start_date = start_dt.strftime("%Y-%m-%d")
         end_date = end_date or datetime.now().strftime("%Y-%m-%d")
-    
-    # For better reliability, load the entire file and then filter
-    # This avoids issues with date parsing inconsistencies during chunk processing
-    df = pd.read_csv(filepath)
     
     # Only filter if dates are specified
     if start_date or end_date:
