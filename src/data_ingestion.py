@@ -57,6 +57,32 @@ def load_employee_info(filepath: str) -> pd.DataFrame:
     """
     return pd.read_csv(filepath)
 
+def load_employment_history(filepath: str) -> pd.DataFrame:
+    """
+    Load employment history data and prepare it for analysis.
+    
+    Args:
+        filepath: Path to employment history CSV file
+        
+    Returns:
+        Preprocessed DataFrame with employment history
+    """
+    # Load the data
+    df = pd.read_csv(filepath)
+    
+    # Ensure date is in datetime format
+    df['Date'] = pd.to_datetime(df['Date'])
+    
+    # Sort by employee and date to ensure chronological order
+    df = df.sort_values(['Employee', 'Date'])
+    
+    print(f"\nLoaded employment history data columns: {df.columns.tolist()}")
+    print(f"Employment history data shape: {df.shape}")
+    print(f"Unique employees in history: {df['Employee'].nunique()}")
+    print(f"Unique statuses: {df['Employment Status'].unique()}")
+    
+    return df
+
 def calculate_default_date_range(days=365):
     """
     Calculate default date range (last year)
@@ -76,6 +102,7 @@ if __name__ == "__main__":
     base_path = Path(__file__).resolve().parent.parent  # go up one level from 'src'
     key_card_path = base_path / "data" / "raw" / "key_card_access.csv"
     employee_info_path = base_path / "data" / "raw" / "employee_info.csv"
+    employment_history_path = base_path / "data" / "raw" / "employment_status_history.csv"
 
     # Example 1: Load all data
     print("\nLoading all data:")
@@ -100,3 +127,6 @@ if __name__ == "__main__":
     # Load employee info
     employee_info_df = load_employee_info(str(employee_info_path))
     print("\nEmployee info shape:", employee_info_df.shape)
+    
+    # Load employment history data
+    employment_history_df = load_employment_history(str(employment_history_path))

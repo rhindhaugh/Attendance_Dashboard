@@ -5,6 +5,7 @@ Project root: /Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard
 - ./
   - README.md
   - code_writer.py
+  - diagnose_attendance.py
   - full_codebase.txt
   - main.py
   - requirements.txt
@@ -23,12 +24,14 @@ Project root: /Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard
     - key_card_access.csv
     - ./data/raw/csv_combiner/
       - csv_combiner.py
+      - key_card_access.csv
       - ./data/raw/csv_combiner/input_files/
         - (1)Jan23-Jul23.csv
         - (2)Aug23-Jan24.csv
         - (3)Jan24-Jun24.csv
         - (4)Jul24-Dec24.csv
         - (5)Jan25-today.csv
+        - Door access - YTD 27_01_25.csv
 - ./notebooks/
 - ./src/
   - dashboard.py
@@ -177,6 +180,133 @@ if __name__ == "__main__":
     main()
 
 ==== END OF FILE: code_writer.py ====
+
+==== START OF FILE: diagnose_attendance.py ====
+import pandas as pd
+from pathlib import Path
+from datetime import datetime, timedelta
+from src.data_ingestion import load_key_card_data, load_employee_info
+from src.data_cleaning import clean_key_card_data, clean_employee_info, merge_key_card_with_employee_info
+from src.data_analysis import build_attendance_table, calculate_tue_thu_attendance_percentage
+
+def diagnose_november_attendance():
+    """Run diagnostics on November 2024 attendance data."""
+    print("Starting attendance diagnosis...")
+    
+    # Test date range
+    month = 11
+    year = 2024
+    
+    # Load data using both methods
+    print("\n=== TESTING OLD VS NEW DATA LOADING ===")
+    
+    # Method 1: Load everything
+    key_card_path = Path("data/raw/key_card_access.csv")
+    original_df = pd.read_csv(key_card_path)
+    print(f"Total rows in original CSV: {len(original_df):,}")
+    
+    # Parse dates
+    original_df['Date/time'] = pd.to_datetime(original_df['Date/time'], dayfirst=True)
+    
+    # Filter for November
+    start_date = pd.Timestamp(f"{year}-{month:02d}-01")
+    end_date = pd.Timestamp(f"{year}-{month+1:02d}-01") if month < 12 else pd.Timestamp(f"{year+1}-01-01")
+    end_date = end_date - pd.Timedelta(days=1)
+    
+    nov_original = original_df[
+        (original_df['Date/time'] >= start_date) &
+        (original_df['Date/time'] <= end_date)
+    ]
+    
+    print(f"November {year} records (original method): {len(nov_original):,}")
+    
+    # Method 2: Use optimized load with specific date
+    optimized_df = load_key_card_data(
+        str(key_card_path),
+        start_date=start_date.strftime("%Y-%m-%d"),
+        end_date=end_date.strftime("%Y-%m-%d")
+    )
+    
+    print(f"November {year} records (optimized method): {len(optimized_df):,}")
+    
+    if len(nov_original) != len(optimized_df):
+        print(f"DISCREPANCY DETECTED: {abs(len(nov_original) - len(optimized_df)):,} rows difference")
+        
+        # Check for differences
+        if 'Date/time' in optimized_df.columns:
+            optimized_df['Date/time'] = pd.to_datetime(optimized_df['Date/time'], dayfirst=True)
+            
+            # Compare date ranges
+            print(f"Original date range: {nov_original['Date/time'].min()} to {nov_original['Date/time'].max()}")
+            print(f"Optimized date range: {optimized_df['Date/time'].min()} to {optimized_df['Date/time'].max()}")
+    
+    # Process both datasets and compare attendance percentages
+    print("\n=== COMPARING ATTENDANCE PERCENTAGES ===")
+    
+    # Load employee data
+    employee_path = Path("data/raw/employee_info.csv") 
+    employee_df = load_employee_info(str(employee_path))
+    employee_df = clean_employee_info(employee_df)
+    
+    # Process original data
+    original_cleaned = clean_key_card_data(nov_original)
+    original_combined = merge_key_card_with_employee_info(original_cleaned, employee_df)
+    original_attendance = build_attendance_table(original_combined)
+    
+    # Add debug print to check columns before percentage calculation
+    print("\nColumns in original_attendance:")
+    print(original_attendance.columns.tolist())
+    
+    # Add debug print to check first few rows
+    print("\nFirst few rows of original_attendance:")
+    print(original_attendance.head())
+    
+    original_pct = calculate_tue_thu_attendance_percentage(original_attendance)
+
+    # Process optimized data
+    optimized_cleaned = clean_key_card_data(optimized_df)
+    optimized_combined = merge_key_card_with_employee_info(optimized_cleaned, employee_df)
+    optimized_attendance = build_attendance_table(optimized_combined)
+    optimized_pct = calculate_tue_thu_attendance_percentage(optimized_attendance)
+    
+    print("\nAttendance Comparison:")
+    print(f"Original: {len(original_attendance):,} employee-day combinations")
+    print(f"Optimized: {len(optimized_attendance):,} employee-day combinations")
+    
+    if not original_pct.empty and not optimized_pct.empty:
+        # Filter for November
+        original_nov = original_pct[
+            (original_pct['date'] >= start_date) &
+            (original_pct['date'] <= end_date)
+        ]
+        
+        optimized_nov = optimized_pct[
+            (optimized_pct['date'] >= start_date) &
+            (optimized_pct['date'] <= end_date)
+        ]
+        
+        print("\nNovember Attendance Percentages:")
+        print(f"Original method average: {original_nov['percentage'].mean():.1f}%")
+        print(f"Optimized method average: {optimized_nov['percentage'].mean():.1f}%")
+        
+        # If there's a significant difference, show day-by-day comparison
+        if abs(original_nov['percentage'].mean() - optimized_nov['percentage'].mean()) > 1.0:
+            print("\nDay-by-day comparison:")
+            comparison = pd.merge(
+                original_nov[['date', 'percentage']].rename(columns={'percentage': 'original_pct'}),
+                optimized_nov[['date', 'percentage']].rename(columns={'percentage': 'optimized_pct'}),
+                on='date',
+                how='outer'
+            )
+            comparison['difference'] = comparison['original_pct'] - comparison['optimized_pct']
+            comparison['date_str'] = comparison['date'].dt.strftime('%Y-%m-%d')
+            print(comparison[['date_str', 'original_pct', 'optimized_pct', 'difference']].sort_values('date'))
+    
+    print("\nDiagnostics complete!")
+
+if __name__ == "__main__":
+    diagnose_november_attendance()
+==== END OF FILE: diagnose_attendance.py ====
 
 ==== START OF FILE: main.py ====
 from src.data_ingestion import load_key_card_data, load_employee_info, calculate_default_date_range
@@ -956,11 +1086,22 @@ def combine_csv_files(input_dir, output_file, subset_cols=None):
         print(f"No CSV files found in {input_dir}")
         return
     
+    # Define dtypes for columns to prevent mixed types
+    dtype_dict = {
+        'User': str,
+        'Event': str,
+        'Where': str,
+        'Date/time': str,
+        'Card Number': str,  # Column 5
+        'Door': str,         # Column 6
+        'Employee #': str
+    }
+    
     # Read each CSV file into a DataFrame
     df_list = []
     for file in csv_files:
         try:
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, dtype=dtype_dict)
             df_list.append(df)
             print(f"Loaded {file} with {len(df)} rows")
         except Exception as e:
@@ -1005,6 +1146,61 @@ if __name__ == "__main__":
     
     combine_csv_files(input_directory, output_csv, subset_cols=dedupe_subset)
 ==== END OF FILE: data/raw/csv_combiner/csv_combiner.py ====
+
+==== START OF FILE: data/raw/csv_combiner/key_card_access.csv ====
+Date/time,User,Token number,Where,Event,Details,Department
+25/02/2025 15:07:30,"918 Chrisostomou, Metaxoulla",99946904.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:07:28,"833 Jefferies, Rosie",21542251.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:07:13,"512 Kilian, Michael",41197139.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:06:57,"863 Shaw-Frost, Oli",42175472.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:06:41,"309 Chamberlain, Richard",39194399.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:05:42,"863 Shaw-Frost, Oli",42175472.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:05:19,"787 Evans, Peter",78353339.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:04:54,"734 Carlile, Darren",16604372.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:04:51,"247 Murray, Bethanie",94145226.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:04:35,"906 Ferrabee, Lucy",11614251.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:04:06,"909 Sharaf Akewushola, Mo",46356833.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:03:49,"CHEF Chef, Matos, Angie",73320085.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:03:37,"488 de Grande, Esther",74190211.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:03:08,"609 Channer, Mark",87271512.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:02:21,"304 Fielding, Adam",42824989.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:02:18,"615 Miller, Daniel",55863178.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:02:08,"309 Chamberlain, Richard",39194399.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:02:07,"914 Hussain, Maira",52317029.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:02:03,"167 Wilkinson, Stephen",50575498.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 15:01:56,"393 Davies, Josephine",79864245.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:01:48,"744 Cannon, Laura",56652968.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:01:44,"488 de Grande, Esther",74190211.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:01:33,"195 Thompson, Calum",79853148.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:01:12,"787 Evans, Peter",78353339.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:00:50,"564 Palsikar, Mitali",71622581.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:00:36,"498 Cairns, Oliver",9739965.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:00:26,"136 Erskine, Oliver",97216191.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:00:22,"787 Evans, Peter",78353339.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:00:09,"232 Loi, Jessica",27858412.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:59:44,"808 Neale, James",46731192.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:59:43,"787 Evans, Peter",78353339.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:59:25,"688 Davies, Stuart",69755068.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 14:58:18,"554 Rogers-Jenkins, Arielle",26426112.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:58:14,"564 Palsikar, Mitali",71622581.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:58:04,"147 Denby, Charles",86141069.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:57:56,"615 Miller, Daniel",55863178.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:57:11,"832 Surridge, Scott",75995296.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:56:55,"282 Mikkelsen, Karen",62865800.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 14:56:48,"668 Stone, William",17200144.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:56:36,"132 Longshaw, Alex",85428928.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:56:20,"849 Hindhaugh, Rob",28807229.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 14:56:11,"859 Webb, George",285846.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:56:02,"176 Grigorescu, Gabriel",68062195.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:56:01,"835 Epstein, Ethan",58643657.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 14:55:50,"232 Loi, Jessica",27858412.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:55:40,"206 Price, Matthew",54479979.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:55:33,"799 Nevares, Ori",85090692.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:55:03,"789 Swain, Anthony",50885597.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:53:55,"804 Sultoon, Hugh",73745342.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/key_card_access.csv ====
 
 ==== START OF FILE: data/raw/csv_combiner/input_files/(1)Jan23-Jul23.csv ====
 "Date/time","User","Token number","Where","Event","Details"
@@ -1281,6 +1477,61 @@ if __name__ == "__main__":
 
 ==== END OF FILE: data/raw/csv_combiner/input_files/(5)Jan25-today.csv ====
 
+==== START OF FILE: data/raw/csv_combiner/input_files/Door access - YTD 27_01_25.csv ====
+"Date/time","User","Details","Event","Department","Where"
+"24/01/2025 23:27:47","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 23:14:32","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 20:51:42","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 20:38:41","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 20:00:25","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 19:20:45","801 Purll, Laura","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 18:36:06","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 18:23:18","761 Clark Hemmings, Andre","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 18:20:00","761 Clark Hemmings, Andre","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 17:55:07","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 17:49:34","890 Capello, Giulio","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 17:43:27","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 17:41:44","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 17:38:58","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 17:38:22","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 17:33:05","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 17:20:59","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 17:10:54","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 17:02:36","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 16:48:24","143 Angopa, Bernard","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 16:44:05","701 Szigeti, Ignac","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 16:33:39","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 16:28:46","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 16:26:29","440 Khan, Shahed","","Access permitted - token only","BambooHR","2nd Floor South RH Side (In)"
+"24/01/2025 16:23:57","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 16:21:18","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 15:51:52","673 Latham, Milo","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:31:56","190 van Lennep, Harold","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:30:53","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 15:29:23","538 Hughes, Alexander","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:27:22","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:11:13","890 Capello, Giulio","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 15:10:04","890 Capello, Giulio","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 15:08:37","890 Capello, Giulio","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"24/01/2025 15:03:08","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 15:01:14","673 Latham, Milo","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 14:43:08","801 Purll, Laura","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 14:41:09","668 Stone, William","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 14:32:00","190 van Lennep, Harold","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 14:22:18","264 Anselmetti, Pietro","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 14:16:18","440 Khan, Shahed","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 14:15:04","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 14:12:43","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 14:09:20","689 Suman, Anushka","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 13:57:14","190 van Lennep, Harold","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"24/01/2025 13:52:39","597 Chan, Aaron","","Access permitted - token only","BambooHR","5th Floor RH Side Entrance  (In)"
+"24/01/2025 13:48:32","701 Szigeti, Ignac","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"24/01/2025 13:46:56","907 Higgins, Tom","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"24/01/2025 13:40:24","143 Angopa, Bernard","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/Door access - YTD 27_01_25.csv ====
+
 ==== START OF FILE: src/dashboard.py ====
 import streamlit as st
 import pandas as pd
@@ -1289,6 +1540,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import time
 import gc  # For garbage collection
+import altair as alt
 
 # Data cleaning and ingestion imports
 from data_ingestion import (
@@ -1358,8 +1610,17 @@ def process_data(key_card_df, employee_df):
     """Process and merge data with caching."""
     start_time = time.time()
     
+    # Clean key card data first
     key_card_df = clean_key_card_data(key_card_df)
-    employee_df = clean_employee_info(employee_df)
+    
+    # Get the maximum date from key card data
+    max_data_date = key_card_df['date_only'].max()
+    print(f"\nMaximum date in key card data: {max_data_date}")
+    
+    # Clean employee data, passing the max_data_date
+    employee_df = clean_employee_info(employee_df, max_data_date)
+    
+    # Merge the datasets
     combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
     
     # Clean up memory
@@ -1437,9 +1698,15 @@ def load_and_process_data():
     # Load raw data
     key_card_df, employee_df = load_data()
     
-    # Clean data
+    # Clean key card data first
     key_card_df = clean_key_card_data(key_card_df)
-    employee_df = clean_employee_info(employee_df)
+    
+    # Get the maximum date from key card data
+    max_data_date = key_card_df['date_only'].max()
+    print(f"\nMaximum date in key card data: {max_data_date}")
+    
+    # Clean employee data, passing the max_data_date
+    employee_df = clean_employee_info(employee_df, max_data_date)
     
     # Merge datasets
     combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
@@ -1454,18 +1721,7 @@ def load_and_process_data():
         how='left'
     )
     
-    # Fill any missing values in present column with 'No'
-    combined_df['present'] = combined_df['present'].fillna('No')
-    
-    # Print debug info
-    print("\nProcessed data info:")
-    print(f"Total rows: {len(combined_df)}")
-    print(f"Rows with present=Yes: {(combined_df['present'] == 'Yes').sum()}")
-    print(f"Unique employees: {combined_df['employee_id'].nunique()}")
-    print("\nSample of processed data:")
-    print(combined_df[['employee_id', 'date_only', 'present', 'visits', 'Location', 'Working Status']].head())
-    
-    return combined_df
+    return combined_df, attendance_table
 
 def filter_by_date_range(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp, date_col: str = 'date') -> pd.DataFrame:
     """Filter DataFrame by date range."""
@@ -1491,35 +1747,82 @@ def main():
     """Main function to run the dashboard."""
     st.title("Office Attendance Dashboard")
     
-    st.sidebar.header("Data Loading Options")
-    data_range_option = st.sidebar.radio(
-        "Select data range to analyze:",
-        ["Last year (faster)", "Last 6 months (fastest)", "Last 30 days (very fast)", 
-         "Custom date range", "All data (slower)"]
+    # Add loading time warning
+    st.sidebar.warning(
+        "Note: Larger date ranges will take longer to load and process."
     )
     
-    start_date = None
-    end_date = None
-    last_n_days = None
+    st.sidebar.header("Data Range Selection")
     
-    if data_range_option == "Last year (faster)":
-        last_n_days = 365
-    elif data_range_option == "Last 6 months (fastest)":
-        last_n_days = 180
-    elif data_range_option == "Last 30 days (very fast)":
+    # Get the most recent date in the data
+    key_card_df = pd.read_csv("data/raw/key_card_access.csv")
+    most_recent_date = pd.to_datetime(key_card_df['Date/time'], dayfirst=True).max()
+    del key_card_df  # Clean up memory
+    
+    data_range_option = st.sidebar.radio(
+        "Select data range to analyze:",
+        [
+            "Year to Date",
+            "Last 30 Days",
+            "Last 3 Months",
+            "Last 6 Months",
+            "2023 Full Year",
+            "2024 Full Year",
+            "Custom Date Range"
+        ]
+    )
+    
+    # Set date parameters based on selection
+    if data_range_option == "Year to Date":
+        st.sidebar.info(
+            f"Data shown is for the one-year period ending {most_recent_date.strftime('%d %B %Y')}, "
+            "which is the most recent data available."
+        )
+        start_date = (most_recent_date - pd.Timedelta(days=365)).strftime("%Y-%m-%d")
+        end_date = most_recent_date.strftime("%Y-%m-%d")
+        last_n_days = None
+        
+    elif data_range_option == "Last 30 Days":
+        start_date = None
+        end_date = None
         last_n_days = 30
-    elif data_range_option == "Custom date range":
-        default_start, default_end = calculate_default_date_range(365)
+        
+    elif data_range_option == "Last 3 Months":
+        start_date = (most_recent_date - pd.Timedelta(days=90)).strftime("%Y-%m-%d")
+        end_date = most_recent_date.strftime("%Y-%m-%d")
+        last_n_days = None
+        
+    elif data_range_option == "Last 6 Months":
+        start_date = (most_recent_date - pd.Timedelta(days=180)).strftime("%Y-%m-%d")
+        end_date = most_recent_date.strftime("%Y-%m-%d")
+        last_n_days = None
+        
+    elif data_range_option == "2023 Full Year":
+        start_date = "2023-01-01"
+        end_date = "2023-12-31"
+        last_n_days = None
+        
+    elif data_range_option == "2024 Full Year":
+        start_date = "2024-01-01"
+        end_date = "2024-12-31"
+        last_n_days = None
+        
+    else:  # Custom Date Range
+        default_start = most_recent_date - pd.Timedelta(days=30)
         date_range = st.sidebar.date_input(
             "Select date range",
-            value=(pd.to_datetime(default_start), pd.to_datetime(default_end)),
+            value=(default_start, most_recent_date),
             min_value=pd.to_datetime("2023-01-01"),
-            max_value=datetime.now()
+            max_value=most_recent_date
         )
         if len(date_range) == 2:
             start_date = date_range[0].strftime("%Y-%m-%d")
             end_date = date_range[1].strftime("%Y-%m-%d")
-    
+        else:
+            st.error("Please select both start and end dates")
+            return
+        last_n_days = None
+
     data_load_state = st.text("Loading data... This may take a moment.")
     
     try:
@@ -1540,7 +1843,13 @@ def main():
         st.success(f"Loaded {len(combined_df):,} records from {min_date.strftime('%d %b %Y')} to {max_date.strftime('%d %b %Y')}")
         
         # Create tabs and display data (keep existing tab code, but use analyses dict)
-        tab1, tab2, tab3, tab4 = st.tabs(["Daily Overview", "Weekly Overview", "Period Summary", "Employee Details"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "Daily Overview", 
+            "Weekly Overview", 
+            "Period Summary", 
+            "Employee Details",
+            "Employee Data"
+        ])
         
         with tab1:
             st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
@@ -1553,6 +1862,46 @@ def main():
                     labels={'percentage': 'Attendance %', 'date': 'Date'}
                 )
                 st.plotly_chart(fig_daily_pct)
+            
+            # Add daily office attendance count chart (Tue-Thu only)
+            st.subheader("Daily Office Attendance (Count) - Tuesdays to Thursdays")
+            
+            # Filter for only Tue-Thu
+            tue_thu_daily = analyses['daily_counts'][
+                analyses['daily_counts']['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+            ]
+            
+            if len(tue_thu_daily) > 0:
+                fig_daily_counts = px.bar(
+                    tue_thu_daily,
+                    x='date',
+                    y=['other_count', 'london_hybrid_count'],  # Order matters for stacking - other on top
+                    title='Daily Attendance by Employee Type',
+                    labels={
+                        'date': 'Date',
+                        'value': 'Attendance Count',
+                        'variable': 'Employee Type'
+                    },
+                    barmode='stack'
+                )
+                
+                # Update trace names to be more readable
+                fig_daily_counts.update_traces(
+                    name='London, Hybrid',
+                    selector=dict(name='london_hybrid_count')
+                )
+                fig_daily_counts.update_traces(
+                    name='Other Employees',
+                    selector=dict(name='other_count')
+                )
+                
+                # Update x-axis to show month and year format
+                fig_daily_counts.update_xaxes(
+                    tickformat="%b %Y",
+                    tickangle=-45
+                )
+                
+                st.plotly_chart(fig_daily_counts, use_container_width=True)
             
             # Daily details table
             st.subheader("Daily Attendance Details")
@@ -1623,7 +1972,7 @@ def main():
                 fig_weekly_counts = px.bar(
                     analyses['weekly_counts'],
                     x='week_start',
-                    y=['london_hybrid_avg', 'other_avg'],
+                    y=['other_avg', 'london_hybrid_avg'],  # Order matters for stacking - other on top
                     title='Average Daily Attendance by Employee Type (Weekly)',
                     labels={
                         'week_start': 'Week Starting',
@@ -1634,7 +1983,7 @@ def main():
                 )
                 
                 fig_weekly_counts.update_traces(
-                    name='London + Hybrid',
+                    name='London, Hybrid',
                     selector=dict(name='london_hybrid_avg')
                 )
                 fig_weekly_counts.update_traces(
@@ -1642,7 +1991,13 @@ def main():
                     selector=dict(name='other_avg')
                 )
                 
-                st.plotly_chart(fig_weekly_counts)
+                # Update x-axis to show month and year format
+                fig_weekly_counts.update_xaxes(
+                    tickformat="%b %Y",
+                    tickangle=-45
+                )
+                
+                st.plotly_chart(fig_weekly_counts, use_container_width=True)
             
             # Weekly details table
             st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
@@ -1756,6 +2111,72 @@ def main():
             
             # Display the table (no additional renaming needed as it's done in create_employee_summary)
             st.dataframe(filtered_employee_summary, hide_index=True)
+        
+        with tab5:
+            st.subheader("Transformed Employee Data")
+            
+            # Get the cleaned employee data
+            # Load the employee data directly
+            employee_df = load_employee_info("data/raw/employee_info.csv")
+            
+            # Get the maximum date from the combined data for proper date handling
+            max_data_date = combined_df['date_only'].max() if 'date_only' in combined_df.columns else None
+            
+            # Clean the employee data with the max date
+            employee_df = clean_employee_info(employee_df, max_data_date)
+            
+            # Keep only relevant columns used in calculations
+            relevant_columns = [
+                'employee_id',
+                'Last name, First name',
+                'Working Status',
+                'Location',
+                'Division',
+                'Department',
+                'Combined hire date',
+                'Most recent day worked'
+            ]
+            
+            # Filter to only include columns that exist
+            available_columns = [col for col in relevant_columns if col in employee_df.columns]
+            display_df = employee_df[available_columns].copy()
+            
+            # Rename columns for display
+            column_mapping = {
+                'employee_id': 'Employee ID',
+                'Last name, First name': 'Employee Name',
+                'Working Status': 'Working Status',
+                'Location': 'Location',
+                'Division': 'Division',
+                'Department': 'Department',
+                'Combined hire date': 'Hire Date',
+                'Most recent day worked': 'Last Day'
+            }
+            
+            # Only rename columns that exist
+            display_df = display_df.rename(columns={k: v for k, v in column_mapping.items() if k in display_df.columns})
+            
+            # Format dates
+            date_columns = ['Hire Date', 'Last Day']
+            for col in date_columns:
+                if col in display_df.columns:
+                    display_df[col] = pd.to_datetime(display_df[col]).dt.strftime('%d/%m/%Y')
+            
+            # Sort by Employee Name if it exists
+            if 'Employee Name' in display_df.columns:
+                display_df = display_df.sort_values('Employee Name')
+            
+            # Display the table
+            st.dataframe(display_df, hide_index=True)
+            
+            # Add download button
+            csv = display_df.to_csv(index=False)
+            st.download_button(
+                label="Download Employee Data as CSV",
+                data=csv,
+                file_name="employee_data.csv",
+                mime="text/csv"
+            )
     
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
@@ -2450,39 +2871,103 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     daily_counts = []
     
     for date in sorted(df['date_only'].unique()):
-        date_mask = (df['date_only'] == date)
+        # Define date_mask first so it's available for both debug and regular code
+        date_mask = df['date_only'] == date
         
+        # Debug code for September 12, 2024
+        if pd.Timestamp(date).strftime('%d/%m/%Y') == '12/09/2024':
+            print("\n===== DEBUGGING SEPTEMBER 12, 2024 =====")
+            
+            # Get all employees present that day regardless of other criteria
+            all_present = df[date_mask & (df['present'] == 'Yes')]['employee_id'].unique()
+            print(f"Total unique employees present on Sep 12: {len(all_present)}")
+            
+            # Check employment dates
+            active_mask = (
+                (pd.to_datetime(df['Combined hire date']) <= date) & 
+                ((df['Most recent day worked'].isna()) | (pd.to_datetime(df['Most recent day worked']) >= date))
+            )
+            
+            active_present = df[date_mask & active_mask & (df['present'] == 'Yes')]['employee_id'].unique()
+            print(f"Employees present and active based on hire/departure dates: {len(active_present)}")
+            
+            # How many were excluded due to employment dates?
+            employment_excluded = set(all_present) - set(active_present)
+            print(f"Excluded due to employment dates: {len(employment_excluded)}")
+            
+            # Show details of excluded employees
+            if employment_excluded:
+                print("\nEmployees excluded due to employment dates:")
+                for emp_id in employment_excluded:
+                    emp_data = df[(df['employee_id'] == emp_id) & date_mask]
+                    if not emp_data.empty:
+                        row = emp_data.iloc[0]
+                        name = row['Last name, First name'] if 'Last name, First name' in row else 'Unknown'
+                        hire_date = row['Combined hire date'] if 'Combined hire date' in row else 'Unknown'
+                        last_day = row['Most recent day worked'] if 'Most recent day worked' in row else 'Unknown'
+                        print(f"  Employee ID: {emp_id}")
+                        print(f"  Name: {name}")
+                        print(f"  Hire date: {hire_date}")
+                        print(f"  Last day worked: {last_day}")
+                        print("  ---")
+            
+            # Check categorization
+            london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+            
+            london_hybrid_present = df[
+                date_mask & active_mask & london_hybrid_mask & (df['present'] == 'Yes')
+            ]['employee_id'].unique()
+            print(f"\nLondon+Hybrid employees counted: {len(london_hybrid_present)}")
+            
+            others_present = df[
+                date_mask & active_mask & ~london_hybrid_mask & (df['present'] == 'Yes')
+            ]['employee_id'].unique()
+            print(f"Other employees counted: {len(others_present)}")
+            
+            # Check for NaN values in Location or Working Status
+            nan_location = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Location'].isna()]['employee_id'].unique()
+            nan_working = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Working Status'].isna()]['employee_id'].unique()
+            print(f"Employees with NaN Location: {len(nan_location)}")
+            print(f"Employees with NaN Working Status: {len(nan_working)}")
+            
+            # Total employees that should be counted
+            should_be_counted = set(london_hybrid_present) | set(others_present)
+            missing = set(active_present) - should_be_counted
+            print(f"MISSING EMPLOYEES: {len(missing)}")
+            if missing:
+                print("\nSample of missing employees:")
+                for emp_id in list(missing)[:5]:
+                    emp_rows = df[(df['employee_id'] == emp_id) & date_mask]
+                    if not emp_rows.empty:
+                        emp_row = emp_rows.iloc[0]
+                        print(f"  ID: {emp_id}, Name: {emp_row.get('Last name, First name', 'N/A')}")
+                        print(f"  Location: {emp_row.get('Location', 'N/A')}, Working Status: {emp_row.get('Working Status', 'N/A')}")
+                        print(f"  Present: {emp_row.get('present', 'N/A')}, Combined hire date: {emp_row.get('Combined hire date', 'N/A')}")
+                        print(f"  Most recent day worked: {emp_row.get('Most recent day worked', 'N/A')}")
+                        print("  ---")
+        
+        # Continue with the original function calculation
         # Consider employment dates
         active_mask = (
-            (pd.to_datetime(df['Combined hire date']) <= date) &
-            (
-                (df['Most recent day worked'].isna()) |
-                (pd.to_datetime(df['Most recent day worked']) >= date)
-            )
+            (pd.to_datetime(df['Combined hire date']) <= date) & 
+            ((df['Most recent day worked'].isna()) | (pd.to_datetime(df['Most recent day worked']) >= date))
         )
         
         london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
         
         # Count London + Hybrid who were present
         london_hybrid_count = df[
-            date_mask & 
-            active_mask &
-            london_hybrid_mask & 
-            (df['present'] == 'Yes')
+            date_mask & active_mask & london_hybrid_mask & (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
         # Count others who were present
         others_count = df[
-            date_mask & 
-            active_mask &
-            ~london_hybrid_mask & 
-            (df['present'] == 'Yes')
+            date_mask & active_mask & ~london_hybrid_mask & (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
         # Get total eligible London + Hybrid employees for that date
         total_eligible_london_hybrid = df[
-            active_mask &
-            london_hybrid_mask
+            active_mask & london_hybrid_mask
         ]['employee_id'].nunique()
         
         # Calculate percentage based on eligible employees
@@ -2496,7 +2981,7 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             'day_of_week': pd.Timestamp(date).strftime('%A'),
             'london_hybrid_count': london_hybrid_count,
             'other_count': others_count,
-            'eligible_london_hybrid': total_eligible_london_hybrid,  # Added for verification
+            'eligible_london_hybrid': total_eligible_london_hybrid,
             'london_hybrid_percentage': round(attendance_percentage, 1),
             'total_attendance': london_hybrid_count + others_count
         })
@@ -2598,14 +3083,13 @@ def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     
     return pd.DataFrame(weekly_counts)
 
-def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -> pd.DataFrame:
+def calculate_period_summary(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
     """Calculate attendance summary by weekday for a given period."""
     df = df.copy()
     
-    # Filter for date range only if both dates are provided
-    if start_date is not None and end_date is not None:
-        date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
-        df = df[date_mask]
+    # Filter for date range
+    date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
+    df = df[date_mask]
     
     # Create weekday averages
     weekday_stats = []
@@ -2640,8 +3124,8 @@ def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -
         
         weekday_stats.append({
             'weekday': day,
-            'london_hybrid_count': round(london_hybrid_attendance, 1) if not pd.isna(london_hybrid_attendance) else 0,
-            'other_count': round(others_attendance, 1) if not pd.isna(others_attendance) else 0,
+            'london_hybrid_count': round(london_hybrid_attendance, 1),
+            'other_count': round(others_attendance, 1),
             'attendance_percentage': round(attendance_percentage, 1)
         })
     
@@ -2675,20 +3159,62 @@ def compute_combined_hire_date(result: pd.DataFrame, df: pd.DataFrame) -> pd.Dat
         result["Combined hire date"] = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
     return result
 
-def compute_most_recent_day_worked(df: pd.DataFrame) -> pd.DataFrame:
-    """Prefer Last Day over Resignation Date for departure info."""
+def compute_most_recent_day_worked(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
+    """
+    Set Most recent day worked based on employee status.
+    - For active employees: use the most recent date from key card data (max_data_date)
+    - For inactive employees: use Employment Status: Date (resignation/termination date)
+    
+    Args:
+        df: DataFrame with employee info
+        max_data_date: The latest date from key card data
+        
+    Returns:
+        DataFrame with Most recent day worked column added
+    """
     df = df.copy()
     
-    # Initialize with Last Day if it exists
-    if "Last Day" in df.columns:
-        df["Most recent day worked"] = df["Last Day"]
-    else:
-        df["Most recent day worked"] = pd.NaT
+    # Initialize with NaT
+    df["Most recent day worked"] = pd.NaT
     
-    # Fill in with Resignation Date where Last Day is missing
-    if "Resignation Date" in df.columns:
-        mask = df["Most recent day worked"].isna()
-        df.loc[mask, "Most recent day worked"] = df.loc[mask, "Resignation Date"]
+    # Check if Employment Status column exists
+    if "Employment Status" in df.columns:
+        # For inactive employees, use Employment Status: Date
+        inactive_mask = df["Employment Status"] == "Inactive"
+        if "Employment Status: Date" in df.columns:
+            df.loc[inactive_mask, "Most recent day worked"] = df.loc[inactive_mask, "Employment Status: Date"]
+        
+        # For active employees, use max_data_date (latest date in key card data)
+        active_mask = df["Employment Status"] == "Active"
+        if max_data_date is not None:
+            df.loc[active_mask, "Most recent day worked"] = max_data_date
+        
+        # Log the changes for verification
+        print(f"\nSet Most recent day worked for {active_mask.sum()} active employees to: {max_data_date}")
+        print(f"Set Most recent day worked for {inactive_mask.sum()} inactive employees based on Employment Status: Date")
+    else:
+        # If Employment Status column doesn't exist, use alternative approach
+        print("\nWarning: 'Employment Status' column not found in employee data")
+        
+        # Check for Status column as an alternative
+        if "Status" in df.columns:
+            inactive_mask = df["Status"] == "Inactive"
+            active_mask = df["Status"] == "Active"
+            
+            # For inactive employees, use Resignation Date if available
+            if "Resignation Date" in df.columns:
+                df.loc[inactive_mask, "Most recent day worked"] = df.loc[inactive_mask, "Resignation Date"]
+            
+            # For active employees, use max_data_date
+            if max_data_date is not None:
+                df.loc[active_mask, "Most recent day worked"] = max_data_date
+            
+            print(f"Using 'Status' column instead: {active_mask.sum()} active, {inactive_mask.sum()} inactive")
+        else:
+            # If no status column exists, set all employees to active with max_data_date
+            print("No status column found. Setting all employees as active.")
+            if max_data_date is not None:
+                df["Most recent day worked"] = max_data_date
     
     return df
 
@@ -2701,9 +3227,19 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     # Extract employee_id from 'User' column with improved regex
     if 'User' in df.columns:
         # Extract numeric ID and convert to numeric type - use vectorized operations
-        # Optimize with a more targeted regex
         result['employee_id'] = pd.to_numeric(df['User'].str.extract(r'^(\d+)', expand=False), 
                                            errors='coerce')
+        
+        # Handle special cases
+        special_cases = {
+            "Arorra, Aakash": 378, 
+            "Payne, James": 735    
+        }
+
+        # After the regular extraction, check for special cases
+        for special_name, special_id in special_cases.items():
+            special_mask = df['User'].str.contains(special_name, regex=False)
+            result.loc[special_mask, 'employee_id'] = special_id
         
         print(f"\nEmployee ID extraction stats:")
         print(f"Total rows: {len(df)}")
@@ -2737,8 +3273,14 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     
     return result
 
-def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean and preprocess the employee information."""
+def clean_employee_info(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
+    """
+    Clean and preprocess the employee information.
+    
+    Args:
+        df: DataFrame with employee info
+        max_data_date: The latest date from key card data
+    """
     # Create a copy only of needed columns
     result = pd.DataFrame()
     
@@ -2760,7 +3302,7 @@ def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     
     # Add computed date columns
     result = compute_combined_hire_date(result, df)
-    result = compute_most_recent_day_worked(result)
+    result = compute_most_recent_day_worked(result, max_data_date)
     
     # Copy other needed columns
     needed_columns = ['Last name, First name', 'Working Status', 'Location', 
@@ -2851,53 +3393,39 @@ def load_key_card_data(filepath: str, start_date: str = None, end_date: str = No
     Returns:
         Filtered DataFrame with key card data
     """
-    # Read only the first few rows to determine date format
-    sample = pd.read_csv(filepath, nrows=5)
+    # Define dtypes for columns to prevent mixed types
+    dtype_dict = {
+        'User': str,
+        'Event': str,
+        'Where': str,
+        'Date/time': str,
+        'Card Number': str,  # Column 5
+        'Door': str,         # Column 6
+        'Employee #': str
+    }
     
-    # Check if we have a Date/time column and determine format
-    if 'Date/time' in sample.columns:
-        # Determine if date format is day-first or month-first
-        # British format is typically day-first (e.g., 25/02/2025)
-        date_format = "%d/%m/%Y" if '/' in sample['Date/time'].iloc[0] else "%Y-%m-%d"
+    # Load the data with specified dtypes
+    df = pd.read_csv(filepath, dtype=dtype_dict)
+    
+    # If date filtering is requested, calculate dates
+    if last_n_days:
+        end_dt = datetime.now() if not end_date else pd.to_datetime(end_date)
+        start_dt = end_dt - timedelta(days=last_n_days)
+        start_date = start_dt.strftime("%Y-%m-%d")
+        end_date = end_date or datetime.now().strftime("%Y-%m-%d")
+    
+    # Only filter if dates are specified
+    if start_date or end_date:
+        # Parse dates consistently using the same method as before
+        df['Date/time'] = pd.to_datetime(df['Date/time'], dayfirst=True)
         
-        # Read the date column and convert it to datetime for filtering
-        date_parser = lambda x: pd.to_datetime(x, format=f"{date_format} %H:%M:%S")
-        
-        # If date filtering is requested, use it
-        if start_date or end_date or last_n_days:
-            # If last_n_days is specified, calculate start_date
-            if last_n_days:
-                end_dt = datetime.now() if not end_date else pd.to_datetime(end_date)
-                start_dt = end_dt - timedelta(days=last_n_days)
-                start_date = start_dt.strftime("%Y-%m-%d")
-                end_date = end_date or datetime.now().strftime("%Y-%m-%d")
-            
-            # Read the CSV with chunk processing to filter by date
-            chunks = []
-            for chunk in pd.read_csv(filepath, chunksize=50000, parse_dates=['Date/time'], date_parser=date_parser):
-                # Convert to datetime if not already
-                if not pd.api.types.is_datetime64_any_dtype(chunk['Date/time']):
-                    chunk['Date/time'] = pd.to_datetime(chunk['Date/time'], format=f"{date_format} %H:%M:%S")
-                
-                # Apply date filter
-                if start_date:
-                    chunk = chunk[chunk['Date/time'] >= pd.to_datetime(start_date)]
-                if end_date:
-                    chunk = chunk[chunk['Date/time'] <= pd.to_datetime(end_date)]
-                
-                # Only append if there's data after filtering
-                if not chunk.empty:
-                    chunks.append(chunk)
-            
-            # Combine filtered chunks
-            if chunks:
-                return pd.concat(chunks, ignore_index=True)
-            else:
-                # Return empty DataFrame with correct columns if no data matches
-                return pd.DataFrame(columns=sample.columns)
-        
-    # If no date filtering or no date column, read the entire file
-    return pd.read_csv(filepath)
+        # Apply date filters
+        if start_date:
+            df = df[df['Date/time'] >= pd.to_datetime(start_date)]
+        if end_date:
+            df = df[df['Date/time'] <= pd.to_datetime(end_date)]
+    
+    return df
 
 def load_employee_info(filepath: str) -> pd.DataFrame:
     """
