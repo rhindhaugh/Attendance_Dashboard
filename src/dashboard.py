@@ -74,8 +74,17 @@ def process_data(key_card_df, employee_df):
     """Process and merge data with caching."""
     start_time = time.time()
     
+    # Clean key card data first
     key_card_df = clean_key_card_data(key_card_df)
-    employee_df = clean_employee_info(employee_df)
+    
+    # Get the maximum date from key card data
+    max_data_date = key_card_df['date_only'].max()
+    print(f"\nMaximum date in key card data: {max_data_date}")
+    
+    # Clean employee data, passing the max_data_date
+    employee_df = clean_employee_info(employee_df, max_data_date)
+    
+    # Merge the datasets
     combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
     
     # Clean up memory
@@ -153,9 +162,15 @@ def load_and_process_data():
     # Load raw data
     key_card_df, employee_df = load_data()
     
-    # Clean data
+    # Clean key card data first
     key_card_df = clean_key_card_data(key_card_df)
-    employee_df = clean_employee_info(employee_df)
+    
+    # Get the maximum date from key card data
+    max_data_date = key_card_df['date_only'].max()
+    print(f"\nMaximum date in key card data: {max_data_date}")
+    
+    # Clean employee data, passing the max_data_date
+    employee_df = clean_employee_info(employee_df, max_data_date)
     
     # Merge datasets
     combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
@@ -170,18 +185,7 @@ def load_and_process_data():
         how='left'
     )
     
-    # Fill any missing values in present column with 'No'
-    combined_df['present'] = combined_df['present'].fillna('No')
-    
-    # Print debug info
-    print("\nProcessed data info:")
-    print(f"Total rows: {len(combined_df)}")
-    print(f"Rows with present=Yes: {(combined_df['present'] == 'Yes').sum()}")
-    print(f"Unique employees: {combined_df['employee_id'].nunique()}")
-    print("\nSample of processed data:")
-    print(combined_df[['employee_id', 'date_only', 'present', 'visits', 'Location', 'Working Status']].head())
-    
-    return combined_df
+    return combined_df, attendance_table
 
 def filter_by_date_range(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp, date_col: str = 'date') -> pd.DataFrame:
     """Filter DataFrame by date range."""
@@ -530,7 +534,14 @@ def main():
             st.subheader("Transformed Employee Data")
             
             # Get the cleaned employee data
-            employee_df = clean_employee_info(load_employee_info("data/raw/employee_info.csv"))
+            # Load the employee data directly
+            employee_df = load_employee_info("data/raw/employee_info.csv")
+            
+            # Get the maximum date from the combined data for proper date handling
+            max_data_date = combined_df['date_only'].max() if 'date_only' in combined_df.columns else None
+            
+            # Clean the employee data with the max date
+            employee_df = clean_employee_info(employee_df, max_data_date)
             
             # Keep only relevant columns used in calculations
             relevant_columns = [
@@ -544,7 +555,9 @@ def main():
                 'Most recent day worked'
             ]
             
-            display_df = employee_df[relevant_columns].copy()
+            # Filter to only include columns that exist
+            available_columns = [col for col in relevant_columns if col in employee_df.columns]
+            display_df = employee_df[available_columns].copy()
             
             # Rename columns for display
             column_mapping = {
@@ -558,15 +571,18 @@ def main():
                 'Most recent day worked': 'Last Day'
             }
             
-            display_df = display_df.rename(columns=column_mapping)
+            # Only rename columns that exist
+            display_df = display_df.rename(columns={k: v for k, v in column_mapping.items() if k in display_df.columns})
             
             # Format dates
             date_columns = ['Hire Date', 'Last Day']
             for col in date_columns:
-                display_df[col] = pd.to_datetime(display_df[col]).dt.strftime('%d/%m/%Y')
+                if col in display_df.columns:
+                    display_df[col] = pd.to_datetime(display_df[col]).dt.strftime('%d/%m/%Y')
             
-            # Sort by Employee Name
-            display_df = display_df.sort_values('Employee Name')
+            # Sort by Employee Name if it exists
+            if 'Employee Name' in display_df.columns:
+                display_df = display_df.sort_values('Employee Name')
             
             # Display the table
             st.dataframe(display_df, hide_index=True)

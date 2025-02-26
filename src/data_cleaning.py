@@ -24,20 +24,62 @@ def compute_combined_hire_date(result: pd.DataFrame, df: pd.DataFrame) -> pd.Dat
         result["Combined hire date"] = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
     return result
 
-def compute_most_recent_day_worked(df: pd.DataFrame) -> pd.DataFrame:
-    """Prefer Last Day over Resignation Date for departure info."""
+def compute_most_recent_day_worked(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
+    """
+    Set Most recent day worked based on employee status.
+    - For active employees: use the most recent date from key card data (max_data_date)
+    - For inactive employees: use Employment Status: Date (resignation/termination date)
+    
+    Args:
+        df: DataFrame with employee info
+        max_data_date: The latest date from key card data
+        
+    Returns:
+        DataFrame with Most recent day worked column added
+    """
     df = df.copy()
     
-    # Initialize with Last Day if it exists
-    if "Last Day" in df.columns:
-        df["Most recent day worked"] = df["Last Day"]
-    else:
-        df["Most recent day worked"] = pd.NaT
+    # Initialize with NaT
+    df["Most recent day worked"] = pd.NaT
     
-    # Fill in with Resignation Date where Last Day is missing
-    if "Resignation Date" in df.columns:
-        mask = df["Most recent day worked"].isna()
-        df.loc[mask, "Most recent day worked"] = df.loc[mask, "Resignation Date"]
+    # Check if Employment Status column exists
+    if "Employment Status" in df.columns:
+        # For inactive employees, use Employment Status: Date
+        inactive_mask = df["Employment Status"] == "Inactive"
+        if "Employment Status: Date" in df.columns:
+            df.loc[inactive_mask, "Most recent day worked"] = df.loc[inactive_mask, "Employment Status: Date"]
+        
+        # For active employees, use max_data_date (latest date in key card data)
+        active_mask = df["Employment Status"] == "Active"
+        if max_data_date is not None:
+            df.loc[active_mask, "Most recent day worked"] = max_data_date
+        
+        # Log the changes for verification
+        print(f"\nSet Most recent day worked for {active_mask.sum()} active employees to: {max_data_date}")
+        print(f"Set Most recent day worked for {inactive_mask.sum()} inactive employees based on Employment Status: Date")
+    else:
+        # If Employment Status column doesn't exist, use alternative approach
+        print("\nWarning: 'Employment Status' column not found in employee data")
+        
+        # Check for Status column as an alternative
+        if "Status" in df.columns:
+            inactive_mask = df["Status"] == "Inactive"
+            active_mask = df["Status"] == "Active"
+            
+            # For inactive employees, use Resignation Date if available
+            if "Resignation Date" in df.columns:
+                df.loc[inactive_mask, "Most recent day worked"] = df.loc[inactive_mask, "Resignation Date"]
+            
+            # For active employees, use max_data_date
+            if max_data_date is not None:
+                df.loc[active_mask, "Most recent day worked"] = max_data_date
+            
+            print(f"Using 'Status' column instead: {active_mask.sum()} active, {inactive_mask.sum()} inactive")
+        else:
+            # If no status column exists, set all employees to active with max_data_date
+            print("No status column found. Setting all employees as active.")
+            if max_data_date is not None:
+                df["Most recent day worked"] = max_data_date
     
     return df
 
@@ -96,8 +138,14 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     
     return result
 
-def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean and preprocess the employee information."""
+def clean_employee_info(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
+    """
+    Clean and preprocess the employee information.
+    
+    Args:
+        df: DataFrame with employee info
+        max_data_date: The latest date from key card data
+    """
     # Create a copy only of needed columns
     result = pd.DataFrame()
     
@@ -119,7 +167,7 @@ def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
     
     # Add computed date columns
     result = compute_combined_hire_date(result, df)
-    result = compute_most_recent_day_worked(result)
+    result = compute_most_recent_day_worked(result, max_data_date)
     
     # Copy other needed columns
     needed_columns = ['Last name, First name', 'Working Status', 'Location', 
