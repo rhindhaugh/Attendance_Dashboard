@@ -137,13 +137,14 @@ def calculate_analyses(combined_df, start_date=None, end_date=None):
     
     # Merge attendance data back to filtered_df
     filtered_df = filtered_df.merge(
-        attendance_table[['employee_id', 'date_only', 'present', 'visits']],
+        attendance_table[['employee_id', 'date_only', 'present', 'is_present', 'visits']],
         on=['employee_id', 'date_only'],
         how='left'
     )
     
-    # Fill any missing values in present column with 'No'
+    # Fill any missing values in present and is_present columns
     filtered_df['present'] = filtered_df['present'].fillna('No')
+    filtered_df['is_present'] = filtered_df['is_present'].fillna(False)
     
     # Store the full employee info for consistent denominators
     filtered_df.attrs['full_employee_info'] = full_employee_info
@@ -212,10 +213,13 @@ def load_and_process_data():
     
     # Merge attendance data back to combined_df
     combined_df = combined_df.merge(
-        attendance_table[['employee_id', 'date_only', 'present', 'visits']],
+        attendance_table[['employee_id', 'date_only', 'present', 'is_present', 'visits']],
         on=['employee_id', 'date_only'],
         how='left'
     )
+    
+    # Fill any missing values in is_present column
+    combined_df['is_present'] = combined_df['is_present'].fillna(False)
     
     return combined_df, attendance_table
 
