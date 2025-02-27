@@ -345,8 +345,8 @@ def main():
             "Weekly Overview", 
             "Period Summary", 
             "Division Attendance",
-            "Employee Details",
-            "Individual Employee Attendance"
+            "Individual Employee Attendance", # Switched tab names
+            "Employee Details"                # Switched tab names
         ])
         
         with tab1:
@@ -359,6 +359,13 @@ def main():
                     title='Daily Office Attendance Percentage - London, Hybrid, Full-Time (Tue-Thu)',
                     labels={'percentage': 'Attendance %', 'date': 'Date'}
                 )
+                
+                # Standardize x-axis format
+                fig_daily_pct.update_xaxes(
+                    tickformat="%b %Y",
+                    tickangle=-45
+                )
+                
                 st.plotly_chart(fig_daily_pct)
             
             # Add daily office attendance count chart (Tue-Thu only)
@@ -463,6 +470,13 @@ def main():
                         'week_start': 'Week Starting'
                     }
                 )
+                
+                # Standardize x-axis format
+                fig_weekly_pct.update_xaxes(
+                    tickformat="%b %Y",
+                    tickangle=-45
+                )
+                
                 st.plotly_chart(fig_weekly_pct)
             
             st.subheader("Weekly Attendance Counts (Tuesday-Thursday only)")
@@ -727,7 +741,7 @@ def main():
                 st.dataframe(styled_div_location, hide_index=True)
         
         with tab5:
-            st.subheader("Employee Attendance Summary - Office Attendance Analysis")
+            st.subheader("Individual Employee Attendance")
             
             # Filter employee summary for selected date range only if both dates are provided
             if start_date and end_date:
@@ -745,7 +759,7 @@ def main():
             st.dataframe(filtered_employee_summary, hide_index=True)
         
         with tab6:
-            st.subheader("Individual Employee Attendance")
+            st.subheader("Employee Details")
             
             # Get the cleaned employee data
             # Load the employee data directly
