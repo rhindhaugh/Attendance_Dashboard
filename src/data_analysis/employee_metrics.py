@@ -227,34 +227,47 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         if is_london_hybrid_ft and employed_tue_thu > 0:
             attendance_rate = round(attended_tue_thu / employed_tue_thu * 100, 1)
         
-        # Only calculate detailed time metrics for London, Hybrid, Full-Time employees
-        if is_london_hybrid_ft:
-            # Calculate mean and median entry times for Tue-Thu
-            tue_thu_entries = emp_data[
-                (emp_data['is_present'] == True) & 
-                tue_thu_mask
-            ].groupby('date_only')['parsed_time'].min()
+        # Calculate arrival time metrics for ALL employees who have at least one entry
+        # First, get all entries for this employee
+        all_entries = emp_data[emp_data['is_present'] == True]
+        
+        # Calculate metrics if we have any entries
+        mean_entry_str = None
+        mean_no_outliers_str = None
+        median_entry_str = None
+        
+        if not all_entries.empty:
+            # Get first entry of each day
+            daily_entries = all_entries.groupby('date_only')['parsed_time'].min()
             
-            if not tue_thu_entries.empty:
-                # Calculate mean (excluding outliers) and get list of excluded times
-                mean_entry_str, excluded_times = calculate_mean_arrival_time(tue_thu_entries)
-                
-                # Debug logging for excluded times
-                if excluded_times:
-                    print(f"\nExcluded arrival times for {emp_name}:")
-                    for time in excluded_times:
-                        print(f"  {time}")
-                
-                # Calculate median (using all times)
+            if not daily_entries.empty and not daily_entries.isna().all():
+                # Calculate median time (using all times)
                 minutes = pd.Series([
                     t.hour * 60 + t.minute 
-                    for t in tue_thu_entries
-                ], index=tue_thu_entries.index)
+                    for t in daily_entries if pd.notna(t)
+                ], index=[idx for idx, t in zip(daily_entries.index, daily_entries) if pd.notna(t)])
                 
-                median_minutes = round(minutes.median())
-                median_hours = median_minutes // 60
-                median_mins = median_minutes % 60
-                median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
+                if not minutes.empty:
+                    # Calculate true mean (including all values)
+                    mean_minutes = round(minutes.mean())
+                    mean_hours = mean_minutes // 60
+                    mean_mins = mean_minutes % 60
+                    mean_entry_str = f"{int(mean_hours):02d}:{int(mean_mins):02d}"
+                    
+                    # Calculate median
+                    median_minutes = round(minutes.median())
+                    median_hours = median_minutes // 60
+                    median_mins = median_minutes % 60
+                    median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
+                    
+                    # Calculate mean excluding outliers and get list of excluded times
+                    mean_no_outliers_str, excluded_times = calculate_mean_arrival_time(daily_entries)
+                    
+                    # Debug logging for excluded times
+                    if excluded_times:
+                        print(f"\nExcluded arrival times for {emp_name}:")
+                        for time in excluded_times:
+                            print(f"  {time}")
         
         results.append({
             'employee_id': emp_id,
@@ -263,7 +276,8 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             'total_days_attended': attended_days,
             'tue_thu_days_attended': attended_tue_thu,
             'potential_tue_thu_days': employed_tue_thu,
-            'mean_arrival_time': mean_entry_str,
+            'mean_arrival_time': mean_entry_str,  # All values included
+            'mean_arrival_no_outliers': mean_no_outliers_str,  # Outliers excluded
             'median_arrival_time': median_entry_str,
             'attendance_rate': attendance_rate
         })
@@ -298,7 +312,8 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         'total_days_attended': 'Total Days Attended',
         'tue_thu_days_attended': 'Tuesday-Thursday Days',
         'potential_tue_thu_days': 'Potential Office Days',
-        'mean_arrival_time': 'Mean Arrival Time',
+        'mean_arrival_time': 'Mean Arrival Time (All)',
+        'mean_arrival_no_outliers': 'Mean Arrival Time (No Outliers)',
         'median_arrival_time': 'Median Arrival Time',
         'attendance_rate': 'Attendance Rate (%)'
     }

@@ -44,14 +44,31 @@ def calculate_mean_arrival_time(times_series: pd.Series) -> tuple[str, list]:
     Returns:
         tuple: (formatted_mean_time, list_of_excluded_times)
     """
-    if times_series.empty:
+    # Handle empty series or all-NaN series
+    if times_series.empty or times_series.isna().all():
         return None, []
         
+    # Drop NaN values
+    times_series = times_series.dropna()
+    if times_series.empty:
+        return None, []
+    
     # Convert times to minutes since midnight
-    minutes = pd.Series([
-        t.hour * 60 + t.minute 
-        for t in times_series
-    ], index=times_series.index)
+    try:
+        minutes = pd.Series([
+            t.hour * 60 + t.minute 
+            for t in times_series
+        ], index=times_series.index)
+    except AttributeError:
+        # In case we have datetime objects instead of time objects
+        print("Converting datetime objects to time...")
+        minutes = pd.Series([
+            t.hour * 60 + t.minute if hasattr(t, 'hour') and hasattr(t, 'minute') else None
+            for t in times_series
+        ], index=times_series.index)
+        minutes = minutes.dropna()
+        if minutes.empty:
+            return None, []
     
     # Calculate median
     median_minutes = minutes.median()
