@@ -65,52 +65,106 @@ def calculate_weekly_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate weekly attendance percentage, considering Tuesday-Thursday.
     Uses the attendance table (one row per employee per day).
+    FIXED: Now uses the same calculation logic as daily attendance for consistent results.
     """
     # Ensure we're working with datetime
     df = df.copy()
     df['date_only'] = pd.to_datetime(df['date_only'])
     
-    # Filter for office days and create week_commencing
+    # Filter for office days (Tuesday-Thursday) and calculate week start
     office_days = df[df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])]
     office_days['week_commencing'] = office_days['date_only'] - pd.to_timedelta(
         office_days['date_only'].dt.dayofweek, unit='d')
+    
+    # Check if we have full employee info available for consistent calculations
+    has_full_employee_info = hasattr(df, 'attrs') and 'full_employee_info' in df.attrs
     
     result = []
     for week in sorted(office_days['week_commencing'].unique()):
         week_end = week + pd.Timedelta(days=6)
         
-        # Get eligible employees for this week (London, Hybrid, Full-Time)
-        eligible_employees = df[
-            (df['Location'] == 'London UK') & 
-            (df['Working Status'] == 'Hybrid') &
-            (df['is_full_time'] == True) &
-            (pd.to_datetime(df['Combined hire date']) <= week_end) &
-            ((pd.to_datetime(df['Most recent day worked']) >= week) | 
-             (df['Status'] == 'Active'))
-        ].drop_duplicates('employee_id')
+        # Get daily attendance and eligible counts for Tue-Thu
+        daily_eligible = []
+        daily_attendance = []
         
-        if len(eligible_employees) == 0:
+        for date in pd.date_range(week, week_end):
+            if date.strftime('%A') in ['Tuesday', 'Wednesday', 'Thursday']:
+                # Consider employment dates - exactly like daily calculation
+                active_mask = (
+                    (pd.to_datetime(df['Combined hire date']) <= date) &
+                    (
+                        (df['Most recent day worked'].isna()) |
+                        (pd.to_datetime(df['Most recent day worked']) >= date)
+                    )
+                )
+                
+                # London, Hybrid, Full-Time mask
+                london_hybrid_ft_mask = (
+                    (df['Location'] == 'London UK') & 
+                    (df['Working Status'] == 'Hybrid') &
+                    (df['is_full_time'] == True)
+                )
+                
+                # Get daily eligible count using the same method as daily calculation
+                if has_full_employee_info:
+                    # Get full employee info DataFrame 
+                    full_emp_df = df.attrs['full_employee_info']
+                    
+                    # Apply employment date filter to full dataset
+                    active_mask_full = (
+                        (pd.to_datetime(full_emp_df['Combined hire date']) <= date) &
+                        ((full_emp_df['Most recent day worked'].isna()) | 
+                         (pd.to_datetime(full_emp_df['Most recent day worked']) >= date))
+                    )
+                    
+                    # Apply London, Hybrid, Full-Time filter to full dataset
+                    london_hybrid_ft_mask_full = (
+                        (full_emp_df['Location'] == 'London UK') & 
+                        (full_emp_df['Working Status'] == 'Hybrid') &
+                        (full_emp_df['is_full_time'] == True)
+                    )
+                    
+                    # Count eligible employees from full employee pool
+                    eligible_count = full_emp_df[
+                        active_mask_full & london_hybrid_ft_mask_full
+                    ]['employee_id'].nunique()
+                else:
+                    # Count eligible from current data
+                    eligible_count = df[
+                        active_mask & london_hybrid_ft_mask
+                    ]['employee_id'].nunique()
+                
+                # Count attendance for this day
+                date_mask = (df['date_only'] == date)
+                attendance_count = df[
+                    date_mask &
+                    active_mask & 
+                    london_hybrid_ft_mask &
+                    (df['is_present'] == True)
+                ]['employee_id'].nunique()
+                
+                daily_eligible.append(eligible_count)
+                daily_attendance.append(attendance_count)
+        
+        if not daily_eligible:
             continue
+            
+        # Calculate average eligible and average attendance
+        avg_eligible = sum(daily_eligible) / len(daily_eligible) if daily_eligible else 0
+        avg_attendance = sum(daily_attendance) / len(daily_attendance) if daily_attendance else 0
+        total_attendance = sum(daily_attendance)
+        total_possible = sum(daily_eligible)
         
-        # For each eligible employee, count their attendance days this week
-        total_attendance = 0
-        for _, emp in eligible_employees.iterrows():
-            days_attended = office_days[
-                (office_days['week_commencing'] == week) &
-                (office_days['employee_id'] == emp['employee_id']) &
-                (office_days['is_present'] == True)
-            ]['date_only'].nunique()
-            total_attendance += days_attended
-        
-        # Total possible days is (eligible employees × 3 days)
-        total_possible_days = len(eligible_employees) * 3
-        attendance_percentage = (total_attendance / total_possible_days * 100)
+        # Calculate attendance percentage
+        attendance_percentage = (avg_attendance / avg_eligible * 100) if avg_eligible > 0 else 0
         
         result.append({
             'week_commencing': week,
-            'days_attended': total_attendance,
-            'total_possible_days': total_possible_days,
-            'attendance_percentage': attendance_percentage
+            'avg_attendance': round(avg_attendance, 1),
+            'avg_eligible': round(avg_eligible, 1),
+            'total_attendance': total_attendance,
+            'total_possible_days': total_possible,
+            'attendance_percentage': round(attendance_percentage, 1)
         })
     
     return pd.DataFrame(result).sort_values('week_commencing')
