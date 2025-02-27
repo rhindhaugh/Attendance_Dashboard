@@ -287,10 +287,13 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             'attendance_rate': attendance_rate
         }
         
-        # Add Working Status, Location, and Division if they exist
+        # Add Working Status, Location, Division, and Full Time status if they exist
         for col in ['Working Status', 'Location', 'Division']:
             if col in emp and pd.notna(emp[col]):
                 result_dict[col.lower().replace(' ', '_')] = emp[col]
+                
+        # Add is_full_time status from the first record (already set in is_london_hybrid_ft check)
+        result_dict['is_full_time'] = first_record['is_full_time'] if 'is_full_time' in first_record else False
         
         results.append(result_dict)
     
@@ -324,6 +327,7 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         'working_status': 'Working Status',
         'location': 'Location',
         'division': 'Division',
+        'is_full_time': 'Full-Time',
         'total_days_attended': 'Total Days Attended',
         'tue_thu_days_attended': 'Tuesday-Thursday Days',
         'potential_tue_thu_days': 'Potential Office Days',

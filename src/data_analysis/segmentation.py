@@ -100,27 +100,26 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     3) For each division, calculate average eligible employees on those days
     4) Calculate percentage = average attendance / average eligible
     """
-    print("\nDEBUGGING DIVISION ATTENDANCE (FIXED METHOD)")
-    
     # Filter for only Tuesday, Wednesday, Thursday
     tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
     tue_thu_df = df[tue_thu_mask]
-    print(f"After filtering for Tue-Thu: {len(tue_thu_df)} rows")
     
     # 1. Calculate total number of unique Tue/Wed/Thu dates in the period
     tue_thu_dates = sorted(tue_thu_df['date_only'].unique())
     total_days = len(tue_thu_dates)
-    print(f"Total Tue/Wed/Thu days in period: {total_days}")
-    print(f"Date range: {min(tue_thu_dates)} to {max(tue_thu_dates)}")
     
     # Get unique divisions, filtering out NaN values
     unique_divisions = [d for d in tue_thu_df['Division'].unique() if pd.notna(d)]
     unique_divisions.sort()  # Sort alphabetically
     
-    # Check if 'present' column exists
-    if 'present' not in tue_thu_df.columns:
-        print("WARNING: 'present' column not found - assuming all employees present")
-        tue_thu_df['present'] = 'Yes'
+    # Check if 'is_present' column exists
+    if 'is_present' not in tue_thu_df.columns:
+        print("WARNING: 'is_present' column not found - falling back to 'present' column")
+        if 'present' in tue_thu_df.columns:
+            tue_thu_df['is_present'] = tue_thu_df['present'] == 'Yes'
+        else:
+            print("WARNING: Neither 'is_present' nor 'present' column found - assuming all employees present")
+            tue_thu_df['is_present'] = True
     
     # Check if 'is_full_time' exists in the dataset
     has_full_time = 'is_full_time' in tue_thu_df.columns
@@ -132,8 +131,6 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     
     # Process each division
     for division in unique_divisions:
-        print(f"\nProcessing division: {division}")
-        
         # Define filters
         division_filter = (tue_thu_df['Division'] == division)
         location_filter = (tue_thu_df['Location'] == 'London UK')
@@ -163,17 +160,13 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
             eligible_count = len(eligible_emps)
             
             # CRUCIAL DIFFERENCE: Get DISTINCT employee IDs of those who were PRESENT
-            present_filter = date_filter & div_eligible_filter & (tue_thu_df['present'] == 'Yes')
+            present_filter = date_filter & div_eligible_filter & (tue_thu_df['is_present'] == True)
             present_emps = set(tue_thu_df[present_filter]['employee_id'].unique())
             attendance_count = len(present_emps)
             
             # Store counts for this date
             eligible_counts.append(eligible_count)
             attendance_counts.append(attendance_count)
-            
-            # For debugging first few dates
-            if len(eligible_counts) <= 3:
-                print(f"  {date.strftime('%Y-%m-%d')}: {attendance_count} present out of {eligible_count} eligible")
         
         # Calculate averages across all dates
         avg_eligible = sum(eligible_counts) / total_days
@@ -185,10 +178,6 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
         else:
             attendance_percentage = 0
         
-        print(f"  Average daily eligible employees: {avg_eligible:.1f}")
-        print(f"  Average daily attendance: {avg_attendance:.1f}")
-        print(f"  Attendance percentage: {attendance_percentage:.1f}%")
-        
         # Store results
         result.append({
             'division': division,
@@ -196,10 +185,6 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
             'eligible_count': round(avg_eligible, 1),
             'attendance_percentage': round(attendance_percentage, 1)
         })
-    
-    print(f"\nFinal result contains {len(result)} divisions")
-    result_df = pd.DataFrame(result)
-    print(result_df)
     
     return pd.DataFrame(result)
 
@@ -217,10 +202,14 @@ def calculate_division_attendance_by_location(df: pd.DataFrame) -> pd.DataFrame:
     unique_divisions = [d for d in df['Division'].unique() if pd.notna(d)]
     unique_divisions.sort()  # Sort alphabetically
     
-    # Check if 'present' column exists
-    if 'present' not in df.columns:
-        # If 'present' column doesn't exist, we assume everyone in the dataset was present
-        df['present'] = 'Yes'
+    # Check if 'is_present' column exists
+    if 'is_present' not in df.columns:
+        print("WARNING: 'is_present' column not found - falling back to 'present' column")
+        if 'present' in df.columns:
+            df['is_present'] = df['present'] == 'Yes'
+        else:
+            print("WARNING: Neither 'is_present' nor 'present' column found - assuming all employees present")
+            df['is_present'] = True
     
     # Check if 'is_full_time' exists in the dataset
     has_full_time = 'is_full_time' in df.columns
@@ -232,7 +221,7 @@ def calculate_division_attendance_by_location(df: pd.DataFrame) -> pd.DataFrame:
             continue
         
         # Base division filter
-        division_filter = (df['Division'] == division) & (df['present'] == 'Yes')
+        division_filter = (df['Division'] == division) & (df['is_present'] == True)
         
         # London, Hybrid, Full-Time filter
         if has_full_time:
