@@ -29,12 +29,12 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
         
         # Count London, Hybrid, Full-Time who were present
         london_hybrid_ft_count = df[
-            date_mask & active_mask & london_hybrid_ft_mask & (df['present'] == 'Yes')
+            date_mask & active_mask & london_hybrid_ft_mask & (df['is_present'] == True)
         ]['employee_id'].nunique()
         
         # Count others who were present
         others_count = df[
-            date_mask & active_mask & ~london_hybrid_ft_mask & (df['present'] == 'Yes')
+            date_mask & active_mask & ~london_hybrid_ft_mask & (df['is_present'] == True)
         ]['employee_id'].nunique()
         
         # SECOND: Calculate eligible employees - use full employee info if available, else filtered

@@ -6,6 +6,28 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
     
+    # Make sure parsed_time exists
+    if 'parsed_time' not in df.columns:
+        if 'Date/time' in df.columns:
+            try:
+                df['parsed_time'] = pd.to_datetime(df['Date/time'], dayfirst=True, errors='coerce')
+                print("\nAdded missing parsed_time column from Date/time")
+            except Exception as e:
+                print(f"\nERROR converting Date/time to parsed_time: {e}")
+                # Check if there's a Date_Parsed column we can use instead
+                if 'Date_Parsed' in df.columns:
+                    print("Using Date_Parsed column instead")
+                    df['parsed_time'] = pd.to_datetime(df['Date_Parsed'], errors='coerce')
+                else:
+                    print("No valid time information found. Setting parsed_time to NaT")
+                    df['parsed_time'] = pd.NaT
+        elif 'Date_Parsed' in df.columns:
+            print("\nUsing Date_Parsed column for parsed_time")
+            df['parsed_time'] = pd.to_datetime(df['Date_Parsed'], errors='coerce')
+        else:
+            print("\nWARNING: No time information found. Cannot calculate arrival times.")
+            df['parsed_time'] = pd.NaT
+    
     # Debug step 1: Show earliest 3 scans per day per employee
     print("\n[DEBUG] Earliest 3 scans per day per employee:")
     temp = (
@@ -19,7 +41,14 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     # Debug step 3: Check location/working status/full-time filtering
     location_mask = (df["Location"] == "London UK")
     working_mask = (df["Working Status"] == "Hybrid")
-    full_time_mask = (df["is_full_time"] == True)
+    
+    # Handle missing is_full_time column
+    if "is_full_time" in df.columns:
+        full_time_mask = (df["is_full_time"] == True)
+    else:
+        print("WARNING: is_full_time column not found. Assuming all employees are full-time.")
+        full_time_mask = pd.Series(True, index=df.index)
+        
     london_hybrid_ft_mask = location_mask & working_mask & full_time_mask
     
     print("\n[DEBUG] Location/Working Status/Full-Time Analysis:")
@@ -32,8 +61,12 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     print(df["Location"].value_counts())
     print("\nWorking Status distribution:")
     print(df["Working Status"].value_counts())
-    print("\nFull-Time Status distribution:")
-    print(df["is_full_time"].value_counts())
+    # Only print is_full_time distribution if it exists
+    if "is_full_time" in df.columns:
+        print("\nFull-Time Status distribution:")
+        print(df["is_full_time"].value_counts())
+    else:
+        print("\nFull-Time Status: Not available in dataset (column missing)")
     
     # 1) Get unique employees and dates
     unique_employees = df[["employee_id", "Last name, First name"]].drop_duplicates()
@@ -67,16 +100,18 @@ def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
     
     # After marking presence
     merged["visits"] = merged["visits"].fillna(0)
+    merged["is_present"] = merged["visits"] > 0  # Use boolean True/False
+    # Keep present as a string for backward compatibility 
     merged["present"] = merged["visits"].map({0: "No"}).fillna("Yes")
     
     # Debug step 2: Show rows marked as 'present'
     print("\n[DEBUG] Checking presence logic. Sample 'present' rows:")
-    present_only = merged[merged["present"] == "Yes"]
-    print(present_only[["employee_id", "employee_name", "date_only", "present", "visits"]].head(30))
+    present_only = merged[merged["is_present"] == True]  # Using boolean True
+    print(present_only[["employee_id", "employee_name", "date_only", "is_present", "visits"]].head(30))
     
     # 4) Calculate total days attended per employee
     days_attended = (
-        merged[merged["present"] == "Yes"]
+        merged[merged["is_present"] == True]  # Use boolean is_present
         .groupby("employee_id")
         .size()
         .reset_index(name="days_attended")

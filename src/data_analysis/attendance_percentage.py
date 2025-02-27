@@ -43,7 +43,7 @@ def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
             (df['date_only'] == date) &
             active_mask & 
             london_hybrid_ft_mask &
-            (df['present'] == 'Yes')
+            (df['is_present'] == True)
         ]['employee_id'].nunique()
         
         # Calculate percentage
@@ -98,7 +98,7 @@ def calculate_weekly_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
             days_attended = office_days[
                 (office_days['week_commencing'] == week) &
                 (office_days['employee_id'] == emp['employee_id']) &
-                (office_days['present'] == 'Yes')
+                (office_days['is_present'] == True)
             ]['date_only'].nunique()
             total_attendance += days_attended
         
@@ -153,7 +153,7 @@ def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
             (df['date_only'] == date) &
             active_mask & 
             london_hybrid_ft_mask &
-            (df['present'] == 'Yes')
+            (df['is_present'] == True)
         ]['employee_id'].nunique()
         
         # Step 2: Get eligible employee count from full employee pool if available

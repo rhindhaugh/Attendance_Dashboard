@@ -43,7 +43,7 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
             last_day = data_end_date
         
         # Total days attended (any day)
-        days_attended = emp_data[emp_data['present'] == 'Yes']['date_only'].nunique()
+        days_attended = emp_data[emp_data['is_present'] == True]['date_only'].nunique()
         
         # Initialize core days metrics
         core_days_percentage = None
@@ -61,7 +61,7 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
             
             # Filter for attended core days
             core_attendance = emp_data[
-                (emp_data['present'] == 'Yes') & 
+                (emp_data['is_present'] == True) & 
                 (emp_data['date_only'].dt.dayofweek.isin([1, 2, 3]))
             ]
             
@@ -203,7 +203,7 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         
         # Get attended days
         attended_days = emp_data[
-            (emp_data['present'] == 'Yes')
+            (emp_data['is_present'] == True)
         ]['date_only'].nunique()
         
         # Initialize Tue-Thu metrics
@@ -215,7 +215,7 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         # Calculate Tue-Thu metrics for all employees
         tue_thu_mask = emp_data['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
         attended_tue_thu = emp_data[
-            (emp_data['present'] == 'Yes') & 
+            (emp_data['is_present'] == True) & 
             tue_thu_mask
         ]['date_only'].nunique()
         
@@ -231,7 +231,7 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
         if is_london_hybrid_ft:
             # Calculate mean and median entry times for Tue-Thu
             tue_thu_entries = emp_data[
-                (emp_data['present'] == 'Yes') & 
+                (emp_data['is_present'] == True) & 
                 tue_thu_mask
             ].groupby('date_only')['parsed_time'].min()
             

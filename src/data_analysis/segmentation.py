@@ -16,11 +16,11 @@ def calculate_attendance_by_weekday(df: pd.DataFrame) -> pd.DataFrame:
             'london_hybrid_ft_count': sum((x['Location'] == 'London UK') & 
                                        (x['Working Status'] == 'Hybrid') &
                                        (x['is_full_time'] == True) &
-                                       (x['present'] == 'Yes')),
+                                       (x['is_present'] == True)),
             'other_count': sum(~((x['Location'] == 'London UK') & 
                                (x['Working Status'] == 'Hybrid') &
                                (x['is_full_time'] == True)) &
-                             (x['present'] == 'Yes'))
+                             (x['is_present'] == True))
         })
     ).reset_index()
     
@@ -59,7 +59,7 @@ def calculate_attendance_by_division(df: pd.DataFrame) -> pd.DataFrame:
             (df['Location'] == 'London UK') & 
             (df['Working Status'] == 'Hybrid') &
             (df['is_full_time'] == True) & 
-            (df['present'] == 'Yes')
+            (df['is_present'] == True)
         ].groupby('employee_id')['date_only'].nunique().sum()
         
         # Calculate total possible days for each employee based on their employment period
