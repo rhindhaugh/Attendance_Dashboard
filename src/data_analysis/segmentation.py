@@ -109,44 +109,87 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     unique_divisions = [d for d in tue_thu_df['Division'].unique() if pd.notna(d)]
     unique_divisions.sort()  # Sort alphabetically
     
+    # Check if 'present' column exists
+    if 'present' not in tue_thu_df.columns:
+        # If 'present' column doesn't exist, we assume everyone in the dataset was present
+        tue_thu_df['present'] = 'Yes'
+    
+    # Check if 'is_full_time' exists in the dataset
+    has_full_time = 'is_full_time' in tue_thu_df.columns
+    
     result = []
     for division in unique_divisions:
-        # Get eligible employees (London, Hybrid, Full-Time in this division)
-        division_employees = tue_thu_df[
-            (tue_thu_df['Division'] == division) & 
-            (tue_thu_df['Location'] == 'London UK') & 
-            (tue_thu_df['Working Status'] == 'Hybrid') &
-            (tue_thu_df['is_full_time'] == True)
-        ]['employee_id'].nunique()
+        # Base filter for this division
+        division_filter = (tue_thu_df['Division'] == division)
         
+        # Get London, Hybrid employees in this division
+        location_filter = (tue_thu_df['Location'] == 'London UK')
+        working_filter = (tue_thu_df['Working Status'] == 'Hybrid')
+        
+        # Add full-time filter if the column exists, otherwise assume all are full-time
+        if has_full_time:
+            full_time_filter = (tue_thu_df['is_full_time'] == True)
+            combined_filter = division_filter & location_filter & working_filter & full_time_filter
+        else:
+            combined_filter = division_filter & location_filter & working_filter
+        
+        # Get all unique eligible employees
+        division_employees = tue_thu_df[combined_filter]['employee_id'].nunique()
+        
+        # Skip divisions with no eligible employees
         if division_employees == 0:
             continue
         
-        # Count attendance for Tuesday-Thursday
-        division_attendance = tue_thu_df[
-            (tue_thu_df['Division'] == division) & 
-            (tue_thu_df['Location'] == 'London UK') & 
-            (tue_thu_df['Working Status'] == 'Hybrid') &
-            (tue_thu_df['is_full_time'] == True) & 
-            (tue_thu_df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        # Get present employees for each day
+        present_filter = combined_filter & (tue_thu_df['present'] == 'Yes')
+        daily_attendance = tue_thu_df[present_filter].groupby('date_only')['employee_id'].nunique()
         
-        # Calculate attendance percentage based on average attendance
-        avg_eligible = tue_thu_df[
-            (tue_thu_df['Division'] == division) & 
-            (tue_thu_df['Location'] == 'London UK') & 
-            (tue_thu_df['Working Status'] == 'Hybrid') &
-            (tue_thu_df['is_full_time'] == True)
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        # Get eligible employees for each day
+        daily_eligible = tue_thu_df[combined_filter].groupby('date_only')['employee_id'].nunique()
         
-        attendance_percentage = (division_attendance / avg_eligible * 100) if avg_eligible > 0 else 0
+        # Calculate daily percentages then average them
+        # This handles days with no eligible employees properly
+        daily_percentages = []
+        attendance_count = 0
+        eligible_count = 0
         
-        result.append({
-            'division': division,
-            'attendance_count': round(division_attendance, 1),
-            'eligible_count': round(avg_eligible, 1),
-            'attendance_percentage': round(attendance_percentage, 1)
-        })
+        # Combine the two series to ensure we have all dates
+        all_dates = sorted(set(daily_attendance.index) | set(daily_eligible.index))
+        
+        for date in all_dates:
+            # Get attendance and eligible counts for this date
+            attendance = daily_attendance.get(date, 0)
+            eligible = daily_eligible.get(date, 0)
+            
+            # Only calculate percentage if there are eligible employees
+            if eligible > 0:
+                daily_percentages.append((attendance / eligible) * 100)
+                attendance_count += attendance
+                eligible_count += eligible
+        
+        # Calculate final values
+        if len(daily_percentages) > 0:
+            # Average of daily percentages
+            avg_daily_percentage = sum(daily_percentages) / len(daily_percentages)
+            
+            # Average counts over all days
+            avg_attendance = attendance_count / len(all_dates)
+            avg_eligible = eligible_count / len(all_dates)
+            
+            result.append({
+                'division': division,
+                'attendance_count': round(avg_attendance, 1),
+                'eligible_count': round(avg_eligible, 1),
+                'attendance_percentage': round(avg_daily_percentage, 1)
+            })
+        else:
+            # No valid days with eligible employees
+            result.append({
+                'division': division,
+                'attendance_count': 0,
+                'eligible_count': 0,
+                'attendance_percentage': 0
+            })
     
     return pd.DataFrame(result)
 
@@ -164,56 +207,94 @@ def calculate_division_attendance_by_location(df: pd.DataFrame) -> pd.DataFrame:
     unique_divisions = [d for d in df['Division'].unique() if pd.notna(d)]
     unique_divisions.sort()  # Sort alphabetically
     
+    # Check if 'present' column exists
+    if 'present' not in df.columns:
+        # If 'present' column doesn't exist, we assume everyone in the dataset was present
+        df['present'] = 'Yes'
+    
+    # Check if 'is_full_time' exists in the dataset
+    has_full_time = 'is_full_time' in df.columns
+    
     result = []
     for division in unique_divisions:
         # Skip divisions with no employees
         if df[df['Division'] == division]['employee_id'].nunique() == 0:
             continue
-            
+        
+        # Base division filter
+        division_filter = (df['Division'] == division) & (df['present'] == 'Yes')
+        
+        # London, Hybrid, Full-Time filter
+        if has_full_time:
+            london_hybrid_ft_filter = (
+                division_filter & 
+                (df['Location'] == 'London UK') & 
+                (df['Working Status'] == 'Hybrid') &
+                (df['is_full_time'] == True)
+            )
+        else:
+            # If no is_full_time column, just use Location and Working Status
+            london_hybrid_ft_filter = (
+                division_filter & 
+                (df['Location'] == 'London UK') & 
+                (df['Working Status'] == 'Hybrid')
+            )
+        
         # Calculate average daily attendance for London, Hybrid, Full-Time
-        london_hybrid_ft_count = df[
-            (df['Division'] == division) & 
-            (df['Location'] == 'London UK') & 
-            (df['Working Status'] == 'Hybrid') &
-            (df['is_full_time'] == True) & 
-            (df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        london_hybrid_ft_df = df[london_hybrid_ft_filter]
+        london_hybrid_ft_daily = london_hybrid_ft_df.groupby('date_only')['employee_id'].nunique()
+        london_hybrid_ft_count = london_hybrid_ft_daily.mean() if not london_hybrid_ft_daily.empty else 0
+        
+        # Hybrid (non-London) filter
+        hybrid_filter = (
+            division_filter & 
+            (df['Location'] != 'London UK') & 
+            (df['Working Status'] == 'Hybrid')
+        )
         
         # Calculate average daily attendance for Hybrid (non-London)
-        hybrid_count = df[
-            (df['Division'] == division) & 
-            (df['Location'] != 'London UK') & 
-            (df['Working Status'] == 'Hybrid') &
-            (df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        hybrid_df = df[hybrid_filter]
+        hybrid_daily = hybrid_df.groupby('date_only')['employee_id'].nunique()
+        hybrid_count = hybrid_daily.mean() if not hybrid_daily.empty else 0
+        
+        # Full-Time (non-Hybrid) filter
+        if has_full_time:
+            full_time_filter = (
+                division_filter & 
+                (df['Working Status'] != 'Hybrid') &
+                (df['is_full_time'] == True)
+            )
+        else:
+            # If no is_full_time column, just use Working Status
+            full_time_filter = (
+                division_filter & 
+                (df['Working Status'] != 'Hybrid')
+            )
         
         # Calculate average daily attendance for Full-Time (non-Hybrid)
-        full_time_count = df[
-            (df['Division'] == division) & 
-            (df['Working Status'] != 'Hybrid') &
-            (df['is_full_time'] == True) & 
-            (df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        full_time_df = df[full_time_filter]
+        full_time_daily = full_time_df.groupby('date_only')['employee_id'].nunique()
+        full_time_count = full_time_daily.mean() if not full_time_daily.empty else 0
+        
+        # Other filter (everyone else present)
+        other_filter = (
+            division_filter & 
+            ~london_hybrid_ft_filter &
+            ~hybrid_filter &
+            ~full_time_filter
+        )
         
         # Calculate average daily attendance for Other
-        other_count = df[
-            (df['Division'] == division) & 
-            ~((df['Location'] == 'London UK') & 
-              (df['Working Status'] == 'Hybrid') &
-              (df['is_full_time'] == True)) &
-            ~((df['Location'] != 'London UK') & 
-              (df['Working Status'] == 'Hybrid')) &
-            ~((df['Working Status'] != 'Hybrid') &
-              (df['is_full_time'] == True)) &
-            (df['present'] == 'Yes')
-        ].groupby('date_only')['employee_id'].nunique().mean()
+        other_df = df[other_filter]
+        other_daily = other_df.groupby('date_only')['employee_id'].nunique()
+        other_count = other_daily.mean() if not other_daily.empty else 0
         
         result.append({
             'division': division,
-            'london_hybrid_ft_count': round(london_hybrid_ft_count, 1) if not pd.isna(london_hybrid_ft_count) else 0,
-            'hybrid_count': round(hybrid_count, 1) if not pd.isna(hybrid_count) else 0,
-            'full_time_count': round(full_time_count, 1) if not pd.isna(full_time_count) else 0,
-            'other_count': round(other_count, 1) if not pd.isna(other_count) else 0
+            'london_hybrid_ft_count': round(london_hybrid_ft_count, 1),
+            'hybrid_count': round(hybrid_count, 1),
+            'full_time_count': round(full_time_count, 1),
+            'other_count': round(other_count, 1)
         })
     
     return pd.DataFrame(result)
