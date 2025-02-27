@@ -13,6 +13,8 @@ from .attendance_percentage import (
 from .segmentation import (
     calculate_attendance_by_weekday,
     calculate_attendance_by_division,
+    calculate_division_attendance_tue_thu,
+    calculate_division_attendance_by_location,
     calculate_period_summary
 )
 from .employee_metrics import (
