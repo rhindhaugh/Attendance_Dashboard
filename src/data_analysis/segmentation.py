@@ -95,11 +95,8 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate average daily attendance (%) by division, only for Tuesdays, Wednesdays and Thursdays.
     
-    Args:
-        df: Combined dataframe with employee and attendance data
-        
-    Returns:
-        DataFrame with division, attendance_percentage 
+    NUMERATOR: For each division, the average number of employees who came to work on Tue-Thu
+    DENOMINATOR: The average number of ALL London, Hybrid, Full-Time employees in that division
     """
     # Filter for only Tuesday, Wednesday, Thursday
     tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
@@ -119,75 +116,71 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     
     result = []
     for division in unique_divisions:
-        # Base filter for this division
+        # Define basic filters
         division_filter = (tue_thu_df['Division'] == division)
-        
-        # Get London, Hybrid employees in this division
         location_filter = (tue_thu_df['Location'] == 'London UK')
         working_filter = (tue_thu_df['Working Status'] == 'Hybrid')
         
         # Add full-time filter if the column exists, otherwise assume all are full-time
         if has_full_time:
             full_time_filter = (tue_thu_df['is_full_time'] == True)
-            combined_filter = division_filter & location_filter & working_filter & full_time_filter
+            lhft_filter = location_filter & working_filter & full_time_filter
         else:
-            combined_filter = division_filter & location_filter & working_filter
+            lhft_filter = location_filter & working_filter
         
-        # Get all unique eligible employees
-        division_employees = tue_thu_df[combined_filter]['employee_id'].nunique()
+        # Division-specific filter for London, Hybrid, Full-Time employees in this division
+        div_lhft_filter = division_filter & lhft_filter
         
         # Skip divisions with no eligible employees
+        division_employees = tue_thu_df[div_lhft_filter]['employee_id'].nunique()
         if division_employees == 0:
             continue
         
-        # Get present employees for each day
-        present_filter = combined_filter & (tue_thu_df['present'] == 'Yes')
-        daily_attendance = tue_thu_df[present_filter].groupby('date_only')['employee_id'].nunique()
+        # Calculate average attendance by date for this division
+        # Numerator: Average number of employees from this division who attended on Tue-Thu
+        present_df = tue_thu_df[div_lhft_filter & (tue_thu_df['present'] == 'Yes')]
         
-        # Get eligible employees for each day
-        daily_eligible = tue_thu_df[combined_filter].groupby('date_only')['employee_id'].nunique()
+        # Get daily attendance counts
+        daily_attendance = present_df.groupby('date_only')['employee_id'].nunique()
         
-        # Calculate daily percentages then average them
-        # This handles days with no eligible employees properly
-        daily_percentages = []
-        attendance_count = 0
-        eligible_count = 0
+        # Calculate the average attendance across all dates
+        if not daily_attendance.empty:
+            avg_attendance = daily_attendance.mean()
+        else:
+            avg_attendance = 0
         
-        # Combine the two series to ensure we have all dates
-        all_dates = sorted(set(daily_attendance.index) | set(daily_eligible.index))
+        # Calculate average eligible employees for this division
+        # Get dates where we have attendance data
+        dates_with_data = daily_attendance.index
         
-        for date in all_dates:
-            # Get attendance and eligible counts for this date
-            attendance = daily_attendance.get(date, 0)
-            eligible = daily_eligible.get(date, 0)
+        if len(dates_with_data) > 0:
+            # For each date, get all eligible employees in this division
+            eligible_counts = []
             
-            # Only calculate percentage if there are eligible employees
-            if eligible > 0:
-                daily_percentages.append((attendance / eligible) * 100)
-                attendance_count += attendance
-                eligible_count += eligible
-        
-        # Calculate final values
-        if len(daily_percentages) > 0:
-            # Average of daily percentages
-            avg_daily_percentage = sum(daily_percentages) / len(daily_percentages)
+            for date in dates_with_data:
+                date_mask = (tue_thu_df['date_only'] == date)
+                eligible_count = tue_thu_df[date_mask & div_lhft_filter]['employee_id'].nunique()
+                eligible_counts.append(eligible_count)
             
-            # Average counts over all days
-            avg_attendance = attendance_count / len(all_dates)
-            avg_eligible = eligible_count / len(all_dates)
+            # Calculate average eligible employees
+            avg_eligible = sum(eligible_counts) / len(eligible_counts)
             
+            # Calculate attendance percentage
+            attendance_percentage = (avg_attendance / avg_eligible * 100) if avg_eligible > 0 else 0
+            
+            # Add to results
             result.append({
                 'division': division,
                 'attendance_count': round(avg_attendance, 1),
                 'eligible_count': round(avg_eligible, 1),
-                'attendance_percentage': round(avg_daily_percentage, 1)
+                'attendance_percentage': round(attendance_percentage, 1)
             })
         else:
-            # No valid days with eligible employees
+            # No valid days with attendance data
             result.append({
                 'division': division,
                 'attendance_count': 0,
-                'eligible_count': 0,
+                'eligible_count': division_employees,
                 'attendance_percentage': 0
             })
     
