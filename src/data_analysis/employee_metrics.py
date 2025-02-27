@@ -163,10 +163,14 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     # Initialize results list
     results = []
     
-    # Get unique employees
-    unique_employees = df.drop_duplicates('employee_id')[
-        ['employee_id', 'Last name, First name']
-    ]
+    # Get unique employees with relevant columns
+    employee_columns = ['employee_id', 'Last name, First name']
+    # Add extra columns if they exist in the dataframe
+    for col in ['Working Status', 'Location', 'Division']:
+        if col in df.columns:
+            employee_columns.append(col)
+    
+    unique_employees = df.drop_duplicates('employee_id')[employee_columns]
     
     for _, emp in unique_employees.iterrows():
         emp_id = emp['employee_id']
@@ -269,7 +273,8 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
                         for time in excluded_times:
                             print(f"  {time}")
         
-        results.append({
+        # Create result dictionary with basic fields
+        result_dict = {
             'employee_id': emp_id,
             'name': emp_name,
             'is_london_hybrid_ft': is_london_hybrid_ft,
@@ -280,7 +285,14 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
             'mean_arrival_no_outliers': mean_no_outliers_str,  # Outliers excluded
             'median_arrival_time': median_entry_str,
             'attendance_rate': attendance_rate
-        })
+        }
+        
+        # Add Working Status, Location, and Division if they exist
+        for col in ['Working Status', 'Location', 'Division']:
+            if col in emp and pd.notna(emp[col]):
+                result_dict[col.lower().replace(' ', '_')] = emp[col]
+        
+        results.append(result_dict)
     
     # Convert to DataFrame and sort by London, Hybrid, Full-Time first, then attendance rate
     result_df = pd.DataFrame(results)
@@ -309,6 +321,9 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     column_mapping = {
         'employee_id': 'Employee ID',
         'name': 'Employee Name',
+        'working_status': 'Working Status',
+        'location': 'Location',
+        'division': 'Division',
         'total_days_attended': 'Total Days Attended',
         'tue_thu_days_attended': 'Tuesday-Thursday Days',
         'potential_tue_thu_days': 'Potential Office Days',
