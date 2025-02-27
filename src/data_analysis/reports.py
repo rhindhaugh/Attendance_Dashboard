@@ -12,42 +12,7 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
         # Define date_mask for the current date
         date_mask = df['date_only'] == date
         
-        # Debug code for September 12, 2024
-        if pd.Timestamp(date).strftime('%d/%m/%Y') == '12/09/2024':
-            print("\n===== DEBUGGING SEPTEMBER 12, 2024 =====")
-            
-            # Get all employees present that day regardless of other criteria
-            all_present = df[date_mask & (df['present'] == 'Yes')]['employee_id'].unique()
-            print(f"Total unique employees present on Sep 12: {len(all_present)}")
-            
-            # Check employment dates
-            active_mask = (
-                (pd.to_datetime(df['Combined hire date']) <= date) & 
-                ((df['Most recent day worked'].isna()) | (pd.to_datetime(df['Most recent day worked']) >= date))
-            )
-            
-            active_present = df[date_mask & active_mask & (df['present'] == 'Yes')]['employee_id'].unique()
-            print(f"Employees present and active based on hire/departure dates: {len(active_present)}")
-            
-            # How many were excluded due to employment dates?
-            employment_excluded = set(all_present) - set(active_present)
-            print(f"Excluded due to employment dates: {len(employment_excluded)}")
-            
-            # Show details of excluded employees
-            if employment_excluded:
-                print("\nEmployees excluded due to employment dates:")
-                for emp_id in employment_excluded:
-                    emp_data = df[(df['employee_id'] == emp_id) & date_mask]
-                    if not emp_data.empty:
-                        row = emp_data.iloc[0]
-                        name = row['Last name, First name'] if 'Last name, First name' in row else 'Unknown'
-                        hire_date = row['Combined hire date'] if 'Combined hire date' in row else 'Unknown'
-                        last_day = row['Most recent day worked'] if 'Most recent day worked' in row else 'Unknown'
-                        print(f"  Employee ID: {emp_id}")
-                        print(f"  Name: {name}")
-                        print(f"  Hire date: {hire_date}")
-                        print(f"  Last day worked: {last_day}")
-                        print("  ---")
+        # Debug code removed for cleaner output
         
         # FIRST: Calculate present employees directly - this shouldn't change
         active_mask = (
@@ -96,18 +61,10 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
                 active_mask_full & london_hybrid_ft_mask_full
             ]['employee_id'].nunique()
             
-            # Debugging: Output the denominator calculation for December 11th, 2024
+            # Compact debugging just for Dec 11, 2024
             if pd.Timestamp(date).strftime('%Y-%m-%d') == '2024-12-11':
-                print(f"\n=== DENOMINATOR CHECK FOR DECEMBER 11, 2024 ===")
-                print(f"Using FULL employee pool for eligible employee count")
-                print(f"Total eligible London, Hybrid, Full-Time: {total_eligible_london_hybrid_ft}")
-                
-                # Compare with filtered dataset
-                filtered_eligible = df[
-                    active_mask & london_hybrid_ft_mask
-                ]['employee_id'].nunique()
-                print(f"Filtered dataset eligible count: {filtered_eligible}")
-                print(f"Difference: {total_eligible_london_hybrid_ft - filtered_eligible}")
+                filtered_eligible = df[active_mask & london_hybrid_ft_mask]['employee_id'].nunique()
+                print(f"Dec 11, 2024: Full dataset eligible: {total_eligible_london_hybrid_ft}, Filtered: {filtered_eligible}")
         else:
             # Use current filtered dataset if full employee info not available
             total_eligible_london_hybrid_ft = df[
