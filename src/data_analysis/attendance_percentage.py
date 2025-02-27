@@ -126,9 +126,12 @@ def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     # Get all unique dates and sort them
     all_dates = sorted(df['date_only'].unique())
     
+    # Check if we have full employee info available for consistent calculations
+    has_full_employee_info = hasattr(df, 'attrs') and 'full_employee_info' in df.attrs
+    
     daily_attendance = []
     for date in all_dates:
-        # Filter for employees who were employed on this date
+        # Step 1: Calculate present employees (only counts who actually were present)
         active_mask = (
             (pd.to_datetime(df['Combined hire date']) <= date) &
             (
@@ -145,14 +148,40 @@ def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
         # Combined mask for London, Hybrid, Full-Time
         london_hybrid_ft_mask = location_mask & working_mask & full_time_mask
         
-        # Calculate metrics
-        eligible_employees = df[active_mask & london_hybrid_ft_mask]['employee_id'].nunique()
+        # Count employees present on this date
         present_employees = df[
             (df['date_only'] == date) &
             active_mask & 
             london_hybrid_ft_mask &
             (df['present'] == 'Yes')
         ]['employee_id'].nunique()
+        
+        # Step 2: Get eligible employee count from full employee pool if available
+        if has_full_employee_info:
+            # Get full employee info DataFrame
+            full_emp_df = df.attrs['full_employee_info']
+            
+            # Apply employment date filter
+            active_mask_full = (
+                (pd.to_datetime(full_emp_df['Combined hire date']) <= date) &
+                ((full_emp_df['Most recent day worked'].isna()) | 
+                 (pd.to_datetime(full_emp_df['Most recent day worked']) >= date))
+            )
+            
+            # Apply London, Hybrid, Full-Time filter
+            london_hybrid_ft_mask_full = (
+                (full_emp_df['Location'] == 'London UK') & 
+                (full_emp_df['Working Status'] == 'Hybrid') &
+                (full_emp_df['is_full_time'] == True)
+            )
+            
+            # Count eligible employees from full employee pool
+            eligible_employees = full_emp_df[
+                active_mask_full & london_hybrid_ft_mask_full
+            ]['employee_id'].nunique()
+        else:
+            # Calculate from current data if full employee info not available
+            eligible_employees = df[active_mask & london_hybrid_ft_mask]['employee_id'].nunique()
         
         # Calculate percentage
         percentage = (present_employees / eligible_employees * 100) if eligible_employees > 0 else 0

@@ -227,6 +227,9 @@ def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -
         date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
         df = df[date_mask]
     
+    # Check if we have full employee info available for consistent calculations
+    has_full_employee_info = hasattr(df, 'attrs') and 'full_employee_info' in df.attrs
+    
     # Create weekday averages
     weekday_stats = []
     for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
@@ -238,6 +241,12 @@ def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -
             (df['Working Status'] == 'Hybrid') &
             (df['is_full_time'] == True)
         )
+        
+        # Get unique dates for this weekday
+        day_dates = sorted(df[day_mask]['date_only'].unique())
+        
+        if not day_dates:
+            continue
         
         # Get attendance for this weekday
         london_hybrid_ft_attendance = df[
@@ -252,11 +261,44 @@ def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -
             (df['present'] == 'Yes')
         ].groupby('date_only')['employee_id'].nunique().mean()
         
-        # Get eligible London, Hybrid, Full-Time employees
-        eligible_london_hybrid_ft = df[
-            day_mask &
-            london_hybrid_ft_mask
-        ]['employee_id'].nunique()
+        # For Tue, Wed, Thu - use full employee info if available
+        if day in ['Tuesday', 'Wednesday', 'Thursday'] and has_full_employee_info:
+            # Get full employee info DataFrame
+            full_emp_df = df.attrs['full_employee_info']
+            
+            # Calculate average eligible employees across all dates of this weekday
+            total_eligible = 0
+            
+            for date in day_dates:
+                # Apply employment date filter for this date
+                active_mask_full = (
+                    (pd.to_datetime(full_emp_df['Combined hire date']) <= date) &
+                    ((full_emp_df['Most recent day worked'].isna()) | 
+                     (pd.to_datetime(full_emp_df['Most recent day worked']) >= date))
+                )
+                
+                # Apply London, Hybrid, Full-Time filter
+                london_hybrid_ft_mask_full = (
+                    (full_emp_df['Location'] == 'London UK') & 
+                    (full_emp_df['Working Status'] == 'Hybrid') &
+                    (full_emp_df['is_full_time'] == True)
+                )
+                
+                # Count eligible employees for this date
+                eligible_count = full_emp_df[
+                    active_mask_full & london_hybrid_ft_mask_full
+                ]['employee_id'].nunique()
+                
+                total_eligible += eligible_count
+            
+            # Calculate average if we found any dates
+            eligible_london_hybrid_ft = total_eligible / len(day_dates) if day_dates else 0
+        else:
+            # For other days or if no lookup available, calculate from current data
+            eligible_london_hybrid_ft = df[
+                day_mask &
+                london_hybrid_ft_mask
+            ]['employee_id'].nunique()
         
         # Calculate percentage
         attendance_percentage = (
@@ -266,8 +308,8 @@ def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -
         
         weekday_stats.append({
             'weekday': day,
-            'london_hybrid_ft_count': round(london_hybrid_ft_attendance, 1),
-            'other_count': round(others_attendance, 1),
+            'london_hybrid_ft_count': round(london_hybrid_ft_attendance, 1) if not pd.isna(london_hybrid_ft_attendance) else 0,
+            'other_count': round(others_attendance, 1) if not pd.isna(others_attendance) else 0,
             'attendance_percentage': round(attendance_percentage, 1)
         })
     

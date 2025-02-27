@@ -109,6 +109,20 @@ def calculate_analyses(combined_df, start_date=None, end_date=None):
     """Calculate all analyses with caching."""
     start_time = time.time()
     
+    # Ensure date columns are datetime type
+    if not pd.api.types.is_datetime64_any_dtype(combined_df['Combined hire date']):
+        combined_df['Combined hire date'] = pd.to_datetime(combined_df['Combined hire date'])
+    if not pd.api.types.is_datetime64_any_dtype(combined_df['Most recent day worked']):
+        combined_df['Most recent day worked'] = pd.to_datetime(combined_df['Most recent day worked'])
+    
+    # CRITICAL: Save a copy of the full dataset's employee information for consistent counting
+    # Get distinct employees with their status info before filtering by date range
+    full_employee_info = combined_df[[
+        'employee_id', 'Location', 'Working Status', 'is_full_time', 
+        'Combined hire date', 'Most recent day worked'
+    ]].drop_duplicates('employee_id')
+    
+    # Filter by date range
     if start_date and end_date:
         date_mask = (
             (combined_df['date_only'] >= pd.to_datetime(start_date)) &
@@ -121,7 +135,7 @@ def calculate_analyses(combined_df, start_date=None, end_date=None):
     # Create attendance table
     attendance_table = build_attendance_table(filtered_df)
     
-    # CRITICAL FIX: Merge attendance data back to filtered_df, just like in load_and_process_data
+    # Merge attendance data back to filtered_df
     filtered_df = filtered_df.merge(
         attendance_table[['employee_id', 'date_only', 'present', 'visits']],
         on=['employee_id', 'date_only'],
@@ -130,6 +144,9 @@ def calculate_analyses(combined_df, start_date=None, end_date=None):
     
     # Fill any missing values in present column with 'No'
     filtered_df['present'] = filtered_df['present'].fillna('No')
+    
+    # Store the full employee info for consistent denominators
+    filtered_df.attrs['full_employee_info'] = full_employee_info
     
     # Calculate all analyses
     tue_thu_attendance = calculate_tue_thu_attendance_percentage(filtered_df)

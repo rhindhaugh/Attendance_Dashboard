@@ -5,8 +5,11 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
     # Calculate attendance for each day
     daily_counts = []
     
+    # Check if we have full employee data available for consistent calculations
+    has_full_employee_info = hasattr(df, 'attrs') and 'full_employee_info' in df.attrs
+    
     for date in sorted(df['date_only'].unique()):
-        # Define date_mask first so it's available for both debug and regular code
+        # Define date_mask for the current date
         date_mask = df['date_only'] == date
         
         # Debug code for September 12, 2024
@@ -45,51 +48,8 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
                         print(f"  Hire date: {hire_date}")
                         print(f"  Last day worked: {last_day}")
                         print("  ---")
-            
-            # Check categorization
-            london_hybrid_ft_mask = (
-                (df['Location'] == 'London UK') & 
-                (df['Working Status'] == 'Hybrid') &
-                (df['is_full_time'] == True)
-            )
-            
-            london_hybrid_ft_present = df[
-                date_mask & active_mask & london_hybrid_ft_mask & (df['present'] == 'Yes')
-            ]['employee_id'].unique()
-            print(f"\nLondon, Hybrid, Full-Time employees counted: {len(london_hybrid_ft_present)}")
-            
-            others_present = df[
-                date_mask & active_mask & ~london_hybrid_ft_mask & (df['present'] == 'Yes')
-            ]['employee_id'].unique()
-            print(f"Other employees counted: {len(others_present)}")
-            
-            # Check for NaN values in relevant columns
-            nan_location = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Location'].isna()]['employee_id'].unique()
-            nan_working = df[date_mask & active_mask & (df['present'] == 'Yes') & df['Working Status'].isna()]['employee_id'].unique()
-            nan_full_time = df[date_mask & active_mask & (df['present'] == 'Yes') & df['is_full_time'].isna()]['employee_id'].unique()
-            print(f"Employees with NaN Location: {len(nan_location)}")
-            print(f"Employees with NaN Working Status: {len(nan_working)}")
-            print(f"Employees with NaN is_full_time: {len(nan_full_time)}")
-            
-            # Total employees that should be counted
-            should_be_counted = set(london_hybrid_ft_present) | set(others_present)
-            missing = set(active_present) - should_be_counted
-            print(f"MISSING EMPLOYEES: {len(missing)}")
-            if missing:
-                print("\nSample of missing employees:")
-                for emp_id in list(missing)[:5]:
-                    emp_rows = df[(df['employee_id'] == emp_id) & date_mask]
-                    if not emp_rows.empty:
-                        emp_row = emp_rows.iloc[0]
-                        print(f"  ID: {emp_id}, Name: {emp_row.get('Last name, First name', 'N/A')}")
-                        print(f"  Location: {emp_row.get('Location', 'N/A')}, Working Status: {emp_row.get('Working Status', 'N/A')}")
-                        print(f"  Full-Time: {emp_row.get('is_full_time', 'N/A')}")
-                        print(f"  Present: {emp_row.get('present', 'N/A')}, Combined hire date: {emp_row.get('Combined hire date', 'N/A')}")
-                        print(f"  Most recent day worked: {emp_row.get('Most recent day worked', 'N/A')}")
-                        print("  ---")
         
-        # Continue with the original function calculation
-        # Consider employment dates
+        # FIRST: Calculate present employees directly - this shouldn't change
         active_mask = (
             (pd.to_datetime(df['Combined hire date']) <= date) & 
             ((df['Most recent day worked'].isna()) | (pd.to_datetime(df['Most recent day worked']) >= date))
@@ -112,10 +72,47 @@ def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
             date_mask & active_mask & ~london_hybrid_ft_mask & (df['present'] == 'Yes')
         ]['employee_id'].nunique()
         
-        # Get total eligible London, Hybrid, Full-Time employees for that date
-        total_eligible_london_hybrid_ft = df[
-            active_mask & london_hybrid_ft_mask
-        ]['employee_id'].nunique()
+        # SECOND: Calculate eligible employees - use full employee info if available, else filtered
+        if has_full_employee_info:
+            # Get full employee info DataFrame
+            full_emp_df = df.attrs['full_employee_info']
+            
+            # Apply the same conditions to full employee dataset
+            active_mask_full = (
+                (pd.to_datetime(full_emp_df['Combined hire date']) <= date) &
+                ((full_emp_df['Most recent day worked'].isna()) | 
+                 (pd.to_datetime(full_emp_df['Most recent day worked']) >= date))
+            )
+            
+            # Apply London, Hybrid, Full-Time filter
+            london_hybrid_ft_mask_full = (
+                (full_emp_df['Location'] == 'London UK') & 
+                (full_emp_df['Working Status'] == 'Hybrid') &
+                (full_emp_df['is_full_time'] == True)
+            )
+            
+            # Count eligible employees from full employee pool
+            total_eligible_london_hybrid_ft = full_emp_df[
+                active_mask_full & london_hybrid_ft_mask_full
+            ]['employee_id'].nunique()
+            
+            # Debugging: Output the denominator calculation for December 11th, 2024
+            if pd.Timestamp(date).strftime('%Y-%m-%d') == '2024-12-11':
+                print(f"\n=== DENOMINATOR CHECK FOR DECEMBER 11, 2024 ===")
+                print(f"Using FULL employee pool for eligible employee count")
+                print(f"Total eligible London, Hybrid, Full-Time: {total_eligible_london_hybrid_ft}")
+                
+                # Compare with filtered dataset
+                filtered_eligible = df[
+                    active_mask & london_hybrid_ft_mask
+                ]['employee_id'].nunique()
+                print(f"Filtered dataset eligible count: {filtered_eligible}")
+                print(f"Difference: {total_eligible_london_hybrid_ft - filtered_eligible}")
+        else:
+            # Use current filtered dataset if full employee info not available
+            total_eligible_london_hybrid_ft = df[
+                active_mask & london_hybrid_ft_mask
+            ]['employee_id'].nunique()
         
         # Calculate percentage based on eligible employees
         attendance_percentage = (
