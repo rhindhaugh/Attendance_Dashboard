@@ -98,7 +98,8 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
         # Handle special cases
         special_cases = {
             "Arorra, Aakash": 378, 
-            "Payne, James": 735    
+            "Payne, James": 735,
+            "Mueller, Benjamin": 867
         }
 
         # After the regular extraction, check for special cases
