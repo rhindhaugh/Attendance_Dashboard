@@ -95,27 +95,27 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate average daily attendance (%) by division, only for Tuesdays, Wednesdays and Thursdays.
     
-    NUMERATOR: Average number of employees from division who came to work on Tue-Thu
-    DENOMINATOR: Average number of London, Hybrid, Full-Time employees in that division
+    1) Calculate total number of Tue/Wed/Thu days in the period
+    2) For each division, calculate average daily attendance on those days
+    3) For each division, calculate average eligible employees on those days
+    4) Calculate percentage = average attendance / average eligible
     """
-    # Add debugging for troubleshooting
-    print("\nDEBUGGING DIVISION ATTENDANCE")
-    print(f"Input DataFrame has {len(df)} rows")
+    print("\nDEBUGGING DIVISION ATTENDANCE (FIXED METHOD)")
     
     # Filter for only Tuesday, Wednesday, Thursday
     tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
     tue_thu_df = df[tue_thu_mask]
     print(f"After filtering for Tue-Thu: {len(tue_thu_df)} rows")
     
-    # Get count of unique dates
-    unique_dates = tue_thu_df['date_only'].unique()
-    print(f"Number of unique dates: {len(unique_dates)}")
-    print(f"Date range: {min(unique_dates)} to {max(unique_dates)}")
+    # 1. Calculate total number of unique Tue/Wed/Thu dates in the period
+    tue_thu_dates = sorted(tue_thu_df['date_only'].unique())
+    total_days = len(tue_thu_dates)
+    print(f"Total Tue/Wed/Thu days in period: {total_days}")
+    print(f"Date range: {min(tue_thu_dates)} to {max(tue_thu_dates)}")
     
     # Get unique divisions, filtering out NaN values
     unique_divisions = [d for d in tue_thu_df['Division'].unique() if pd.notna(d)]
     unique_divisions.sort()  # Sort alphabetically
-    print(f"Number of unique divisions: {len(unique_divisions)}")
     
     # Check if 'present' column exists
     if 'present' not in tue_thu_df.columns:
@@ -127,100 +127,75 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     if not has_full_time:
         print("WARNING: 'is_full_time' column not found - assuming all employees are full-time")
     
-    # Count employees by division once for debugging
-    division_counts = tue_thu_df.groupby('Division')['employee_id'].nunique()
-    print("\nNumber of employees by division:")
-    for division, count in division_counts.items():
-        if pd.notna(division):
-            print(f"  {division}: {count} employees")
-    
+    # Create a dataframe to store results
     result = []
+    
+    # Process each division
     for division in unique_divisions:
         print(f"\nProcessing division: {division}")
         
-        # Define basic filters
+        # Define filters
         division_filter = (tue_thu_df['Division'] == division)
         location_filter = (tue_thu_df['Location'] == 'London UK')
         working_filter = (tue_thu_df['Working Status'] == 'Hybrid')
         
-        # Define combined filters
+        # London, Hybrid, Full-Time filter
         if has_full_time:
             full_time_filter = (tue_thu_df['is_full_time'] == True)
             lhft_filter = location_filter & working_filter & full_time_filter
         else:
             lhft_filter = location_filter & working_filter
         
-        # Combine with division filter
-        div_lhft_filter = division_filter & lhft_filter
+        # Division-specific eligible employees filter
+        div_eligible_filter = division_filter & lhft_filter
         
-        # Count eligible employees in this division
-        eligible_employees = tue_thu_df[div_lhft_filter]['employee_id'].nunique()
-        print(f"  Number of eligible London, Hybrid, Full-Time employees: {eligible_employees}")
+        # Create arrays to store daily counts
+        eligible_counts = []
+        attendance_counts = []
         
-        if eligible_employees == 0:
-            print("  Skipping division - no eligible employees")
-            continue
-        
-        # SIMPLIFIED APPROACH for clarity:
-        # 1. Get all eligible dates
-        eligible_dates = sorted(tue_thu_df['date_only'].unique())
-        
-        # 2. For each date, count how many eligible employees were present vs total eligible
-        date_counts = []
-        for date in eligible_dates:
+        # For each date, calculate eligible and present employees
+        for date in tue_thu_dates:
             date_filter = (tue_thu_df['date_only'] == date)
             
-            # Count eligible employees for this division on this date
-            date_eligible = tue_thu_df[date_filter & div_lhft_filter]['employee_id'].nunique()
+            # CRUCIAL DIFFERENCE: Get DISTINCT employee IDs for eligible employees on this date
+            # in this division who are London, Hybrid, Full-Time
+            eligible_emps = set(tue_thu_df[date_filter & div_eligible_filter]['employee_id'].unique())
+            eligible_count = len(eligible_emps)
             
-            # Count present employees for this division on this date
-            date_present = tue_thu_df[
-                date_filter & 
-                div_lhft_filter & 
-                (tue_thu_df['present'] == 'Yes')
-            ]['employee_id'].nunique()
+            # CRUCIAL DIFFERENCE: Get DISTINCT employee IDs of those who were PRESENT
+            present_filter = date_filter & div_eligible_filter & (tue_thu_df['present'] == 'Yes')
+            present_emps = set(tue_thu_df[present_filter]['employee_id'].unique())
+            attendance_count = len(present_emps)
             
-            # Only include dates where we have eligible employees
-            if date_eligible > 0:
-                date_counts.append({
-                    'date': date,
-                    'eligible': date_eligible,
-                    'present': date_present
-                })
+            # Store counts for this date
+            eligible_counts.append(eligible_count)
+            attendance_counts.append(attendance_count)
+            
+            # For debugging first few dates
+            if len(eligible_counts) <= 3:
+                print(f"  {date.strftime('%Y-%m-%d')}: {attendance_count} present out of {eligible_count} eligible")
         
-        print(f"  Found {len(date_counts)} days with eligible employees")
+        # Calculate averages across all dates
+        avg_eligible = sum(eligible_counts) / total_days
+        avg_attendance = sum(attendance_counts) / total_days
         
-        # 3. Calculate averages across all dates
-        if len(date_counts) > 0:
-            # Sum up all eligible and present employees
-            total_eligible = sum(d['eligible'] for d in date_counts)
-            total_present = sum(d['present'] for d in date_counts)
-            
-            # Calculate averages
-            avg_eligible = total_eligible / len(date_counts)
-            avg_present = total_present / len(date_counts)
-            
-            # Calculate overall percentage
-            attendance_percentage = (total_present / total_eligible * 100) if total_eligible > 0 else 0
-            
-            print(f"  Average daily eligible: {avg_eligible:.1f}")
-            print(f"  Average daily present: {avg_present:.1f}")
-            print(f"  Attendance percentage: {attendance_percentage:.1f}%")
-            
-            result.append({
-                'division': division,
-                'attendance_count': round(avg_present, 1),
-                'eligible_count': round(avg_eligible, 1),
-                'attendance_percentage': round(attendance_percentage, 1)
-            })
+        # Calculate percentage
+        if avg_eligible > 0:
+            attendance_percentage = (avg_attendance / avg_eligible) * 100
         else:
-            print("  No valid dates with eligible employees")
-            result.append({
-                'division': division,
-                'attendance_count': 0,
-                'eligible_count': eligible_employees,
-                'attendance_percentage': 0
-            })
+            attendance_percentage = 0
+        
+        print(f"  Average daily eligible employees: {avg_eligible:.1f}")
+        print(f"  Average daily attendance: {avg_attendance:.1f}")
+        print(f"  Attendance percentage: {attendance_percentage:.1f}%")
+        
+        # Store results
+        result.append({
+            'division': division,
+            'attendance_count': round(avg_attendance, 1),
+            'eligible_count': round(avg_eligible, 1),
+            'attendance_percentage': round(attendance_percentage, 1)
+        })
     
     print(f"\nFinal result contains {len(result)} divisions")
     result_df = pd.DataFrame(result)
