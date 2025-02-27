@@ -99,7 +99,8 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
         special_cases = {
             "Arorra, Aakash": 378, 
             "Payne, James": 735,
-            "Mueller, Benjamin": 867
+            "Mueller, Benjamin": 867,
+            "Hindhaugh, Robert": 849
         }
 
         # After the regular extraction, check for special cases
@@ -183,6 +184,24 @@ def clean_employee_info(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
         print("\nUnique Working Status values:")
         print(result['Working Status'].value_counts())
     
+    # Ensure Robert Hindhaugh is in the dataset
+    if 849 not in result['employee_id'].values:
+        # Add Rob's information
+        rob_data = {
+            'employee_id': 849,
+            'Last name, First name': 'Hindhaugh, Robert',
+            'Working Status': 'Hybrid',
+            'Location': 'London UK',
+            'Combined hire date': pd.to_datetime('07/01/2025', dayfirst=True),
+            'Most recent day worked': max_data_date if max_data_date else pd.NaT,
+            'Employment Status': 'Active'
+        }
+        
+        # Append to result DataFrame
+        rob_df = pd.DataFrame([rob_data])
+        result = pd.concat([result, rob_df], ignore_index=True)
+        print("\nAdded missing data for Robert Hindhaugh (ID: 849)")
+    
     return result
 
 def merge_key_card_with_employee_info(
@@ -210,8 +229,13 @@ def merge_key_card_with_employee_info(
         raise KeyError("Both DataFrames must have 'employee_id' column")
     
     # Optimize: Only keep employee_df rows that have matching employee_ids in key_card_df
+    # or are special cases (like Rob Hindhaugh - ID 849)
     unique_ids_in_keycard = key_card_df['employee_id'].unique()
-    filtered_employee_df = employee_df[employee_df['employee_id'].isin(unique_ids_in_keycard)]
+    special_ids_to_keep = [849]  # Rob Hindhaugh's ID
+    
+    # Create filter mask
+    filter_mask = employee_df['employee_id'].isin(unique_ids_in_keycard) | employee_df['employee_id'].isin(special_ids_to_keep)
+    filtered_employee_df = employee_df[filter_mask]
     
     print(f"Filtered employee DataFrame from {len(employee_df)} to {len(filtered_employee_df)} rows")
     
@@ -342,12 +366,16 @@ def add_full_time_indicators(df: pd.DataFrame, status_lookup: dict) -> pd.DataFr
     for index, row in result.iterrows():
         if pd.isna(row['employee_id']):
             continue
-            
-        result.at[index, 'is_full_time'] = is_full_time_on_date(
-            row['employee_id'],
-            row['date_only'],
-            status_lookup
-        )
+        
+        # Special case for Rob Hindhaugh (ID: 849) - always full-time
+        if row['employee_id'] == 849:
+            result.at[index, 'is_full_time'] = True
+        else:
+            result.at[index, 'is_full_time'] = is_full_time_on_date(
+                row['employee_id'],
+                row['date_only'],
+                status_lookup
+            )
     
     print(f"Added is_full_time indicator to {len(result)} rows")
     print(f"Employees marked as Full-Time: {result['is_full_time'].sum()} rows")
