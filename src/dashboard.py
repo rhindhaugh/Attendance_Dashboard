@@ -119,7 +119,7 @@ def calculate_analyses(combined_df, start_date=None, end_date=None):
     # Get distinct employees with their status info before filtering by date range
     full_employee_info = combined_df[[
         'employee_id', 'Location', 'Working Status', 'is_full_time', 
-        'Combined hire date', 'Most recent day worked'
+        'Combined hire date', 'Most recent day worked', 'Division'
     ]].drop_duplicates('employee_id')
     
     # Filter by date range
@@ -344,13 +344,12 @@ def main():
         st.success(f"Loaded {len(combined_df):,} records from {min_date.strftime('%d %b %Y')} to {max_date.strftime('%d %b %Y')}")
         
         # Create tabs and display data (keep existing tab code, but use analyses dict)
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "Daily Overview", 
             "Weekly Overview", 
-            "Period Summary", 
             "Division Attendance",
-            "Individual Employee Attendance", # Switched tab names
-            "Employee Details"                # Switched tab names
+            "Individual Employee Attendance",
+            "Employee Details"
         ])
         
         with tab1:
@@ -360,13 +359,18 @@ def main():
                     analyses['tue_thu_attendance'],
                     x='date',
                     y='percentage',
-                    title='Daily Office Attendance Percentage - London, Hybrid, Full-Time (Tue-Thu)',
+                    title='Daily Office Attendance (%) - London, Hybrid, Full-Time (Tue-Thu)',
                     labels={'percentage': 'Attendance %', 'date': 'Date'}
+                )
+                
+                # Set hover template for more detailed date information
+                fig_daily_pct.update_traces(
+                    hovertemplate='%{x|%d %b %Y}<br>Attendance: %{y:.1f}%<extra></extra>'
                 )
                 
                 # Standardize x-axis format
                 fig_daily_pct.update_xaxes(
-                    tickformat="%b %Y",
+                    tickformat="%d %b %Y",
                     tickangle=-45
                 )
                 
@@ -385,7 +389,7 @@ def main():
                     tue_thu_daily,
                     x='date',
                     y=['other_count', 'london_hybrid_ft_count'],  # Order matters for stacking - other on top
-                    title='Daily Attendance by Employee Type (London, Hybrid, Full-Time vs Others)',
+                    title='Daily Attendance Count by Employee Type (Tue-Thu)',
                     labels={
                         'date': 'Date',
                         'value': 'Attendance Count',
@@ -404,13 +408,51 @@ def main():
                     selector=dict(name='other_count')
                 )
                 
-                # Update x-axis to show month and year format
+                # Set hover template for more detailed information
+                fig_daily_counts.update_traces(
+                    hovertemplate='%{x|%d %b %Y}<br>%{fullData.name}: %{y}<extra></extra>'
+                )
+                
+                # Update x-axis to show day, month and year format
                 fig_daily_counts.update_xaxes(
-                    tickformat="%b %Y",
+                    tickformat="%d %b %Y",
                     tickangle=-45
                 )
                 
                 st.plotly_chart(fig_daily_counts, use_container_width=True)
+            
+            # Add total office attendance count line chart for London, Hybrid, Full-Time
+            st.subheader("Total Office Attendance Count (London, Hybrid, Full-Time) - Tuesdays to Thursdays")
+            
+            # Filter for only Tue-Thu
+            tue_thu_daily = analyses['daily_counts'][
+                analyses['daily_counts']['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+            ]
+            
+            if len(tue_thu_daily) > 0:
+                fig_lhft_count = px.line(
+                    tue_thu_daily,
+                    x='date',
+                    y='london_hybrid_ft_count',
+                    title='Daily London, Hybrid, Full-Time Attendance Count (Tue-Thu)',
+                    labels={
+                        'date': 'Date',
+                        'london_hybrid_ft_count': 'Attendance Count'
+                    }
+                )
+                
+                # Set hover template for more detailed information
+                fig_lhft_count.update_traces(
+                    hovertemplate='%{x|%d %b %Y}<br>Attendance Count: %{y}<extra></extra>'
+                )
+                
+                # Update x-axis format
+                fig_lhft_count.update_xaxes(
+                    tickformat="%d %b %Y",
+                    tickangle=-45
+                )
+                
+                st.plotly_chart(fig_lhft_count, use_container_width=True)
             
             # Daily details table
             st.subheader("Daily Attendance Details (London, Hybrid, Full-Time Analysis)")
@@ -468,16 +510,21 @@ def main():
                     analyses['weekly_counts'],
                     x='week_start',
                     y='london_hybrid_ft_percentage',
-                    title='Weekly Office Attendance Percentage - London, Hybrid, Full-Time',
+                    title='Weekly Office Attendance (%) - London, Hybrid, Full-Time (Tue-Thu)',
                     labels={
                         'london_hybrid_ft_percentage': 'Attendance %',
                         'week_start': 'Week Starting'
                     }
                 )
                 
+                # Set hover template for more detailed information
+                fig_weekly_pct.update_traces(
+                    hovertemplate='Week of %{x|%d %b %Y}<br>Attendance: %{y:.1f}%<extra></extra>'
+                )
+                
                 # Standardize x-axis format
                 fig_weekly_pct.update_xaxes(
-                    tickformat="%b %Y",
+                    tickformat="%d %b %Y",
                     tickangle=-45
                 )
                 
@@ -489,7 +536,7 @@ def main():
                     analyses['weekly_counts'],
                     x='week_start',
                     y=['other_avg', 'london_hybrid_ft_avg'],  # Order matters for stacking - other on top
-                    title='Average Daily Attendance by Employee Type (London, Hybrid, Full-Time vs Others)',
+                    title='Weekly Average Attendance Count by Employee Type (Tue-Thu)',
                     labels={
                         'week_start': 'Week Starting',
                         'value': 'Average Daily Attendance',
@@ -507,9 +554,14 @@ def main():
                     selector=dict(name='other_avg')
                 )
                 
-                # Update x-axis to show month and year format
+                # Set hover template for more detailed information
+                fig_weekly_counts.update_traces(
+                    hovertemplate='Week of %{x|%d %b %Y}<br>%{fullData.name}: %{y}<extra></extra>'
+                )
+                
+                # Update x-axis to show day, month and year format
                 fig_weekly_counts.update_xaxes(
-                    tickformat="%b %Y",
+                    tickformat="%d %b %Y",
                     tickangle=-45
                 )
                 
@@ -560,57 +612,6 @@ def main():
             st.dataframe(styled_weekly, hide_index=True)
         
         with tab3:
-            st.subheader("Period Summary")
-            if len(analyses['period_summary']) > 0:
-                fig_period = px.bar(
-                    analyses['period_summary'],
-                    x='weekday',
-                    y=['london_hybrid_ft_count', 'other_count'],
-                    title='Average Daily Attendance by Weekday (London, Hybrid, Full-Time vs Others)',
-                    labels={
-                        'weekday': 'Day of Week',
-                        'value': 'Average Attendance',
-                        'variable': 'Employee Type'
-                    },
-                    barmode='group'
-                )
-                
-                fig_period.update_traces(
-                    name='London, Hybrid, Full-Time',
-                    selector=dict(name='london_hybrid_ft_count')
-                )
-                fig_period.update_traces(
-                    name='Other Employees',
-                    selector=dict(name='other_count')
-                )
-                
-                st.plotly_chart(fig_period)
-                
-                # Period summary table
-                st.subheader("Weekday Averages - London, Hybrid, Full-Time Analysis")
-                display_cols_period = {
-                    'weekday': 'Day of Week',
-                    'london_hybrid_ft_count': 'Avg. London, Hybrid, Full-Time Count',
-                    'other_count': 'Avg. Other Count',
-                    'attendance_percentage': 'London, Hybrid, Full-Time Attendance %'
-                }
-                period_display = analyses['period_summary'][display_cols_period.keys()].rename(columns=display_cols_period)
-                
-                # Create styled version
-                styled_period = period_display.copy()
-                
-                # Format numbers
-                count_columns = ['Avg. London, Hybrid, Full-Time Count', 'Avg. Other Count']
-                percentage_columns = ['London, Hybrid, Full-Time Attendance %']
-                
-                for col in count_columns:
-                    styled_period[col] = styled_period[col].apply(lambda x: f"{round(x):,}")
-                for col in percentage_columns:
-                    styled_period[col] = styled_period[col].apply(lambda x: f"{x:.1f}%")
-                
-                st.dataframe(styled_period, hide_index=True)
-        
-        with tab4:
             st.subheader("Division Attendance Analysis")
             
             # Division attendance percentage chart (only Tuesdays, Wednesdays, Thursdays)
@@ -624,10 +625,10 @@ def main():
                     division_tue_thu_sorted,
                     x='division',
                     y='attendance_percentage',
-                    title='Average Attendance (%) by Division - London, Hybrid, Full-Time (Tue-Thu)',
+                    title='Division Attendance Rate (%) - London, Hybrid, Full-Time (Tue-Thu)',
                     labels={
                         'division': 'Division',
-                        'attendance_percentage': 'Attendance Percentage (%)'
+                        'attendance_percentage': 'Attendance Rate (%)'
                     },
                     color='attendance_percentage',
                     color_continuous_scale='Viridis'
@@ -635,7 +636,7 @@ def main():
                 
                 fig_division_pct.update_layout(
                     xaxis_title='Division',
-                    yaxis_title='Attendance Percentage (%)'
+                    yaxis_title='Attendance Rate (%)'
                 )
                 
                 st.plotly_chart(fig_division_pct, use_container_width=True)
@@ -647,11 +648,11 @@ def main():
                     'division': 'Division',
                     'attendance_count': 'Average Daily Attendance (#)',
                     'eligible_count': 'Eligible Employees (#)',
-                    'attendance_percentage': 'Attendance (%)'
+                    'attendance_percentage': 'Attendance Rate (%)'
                 })
                 
                 # Format percentages
-                styled_div_tue_thu['Attendance (%)'] = styled_div_tue_thu['Attendance (%)'].apply(lambda x: f"{x:.1f}%")
+                styled_div_tue_thu['Attendance Rate (%)'] = styled_div_tue_thu['Attendance Rate (%)'].apply(lambda x: f"{x:.1f}%")
                 
                 # Format counts
                 styled_div_tue_thu['Average Daily Attendance (#)'] = styled_div_tue_thu['Average Daily Attendance (#)'].apply(lambda x: f"{x:.1f}")
@@ -680,7 +681,7 @@ def main():
                     division_location_sorted,
                     x='division',
                     y=['london_hybrid_ft_count', 'hybrid_count', 'full_time_count', 'other_count'],
-                    title='Average Daily Attendance by Division and Employee Category',
+                    title='Average Attendance Count by Division and Employee Category',
                     labels={
                         'division': 'Division',
                         'value': 'Average Daily Attendance',
@@ -744,7 +745,7 @@ def main():
                 
                 st.dataframe(styled_div_location, hide_index=True)
         
-        with tab5:
+        with tab4:
             st.subheader("Individual Employee Attendance")
             
             # Filter employee summary for selected date range only if both dates are provided
@@ -762,7 +763,7 @@ def main():
             # Display the table (no additional renaming needed as it's done in create_employee_summary)
             st.dataframe(filtered_employee_summary, hide_index=True)
         
-        with tab6:
+        with tab5:
             st.subheader("Employee Details")
             
             # Get the cleaned employee data

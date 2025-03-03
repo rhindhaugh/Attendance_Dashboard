@@ -97,7 +97,7 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     
     1) Calculate total number of Tue/Wed/Thu days in the period
     2) For each division, calculate average daily attendance on those days
-    3) For each division, calculate average eligible employees on those days
+    3) For each division, calculate average eligible employees on those days (using full employee data)
     4) Calculate percentage = average attendance / average eligible
     """
     # Filter for only Tuesday, Wednesday, Thursday
@@ -126,26 +126,14 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
     if not has_full_time:
         print("WARNING: 'is_full_time' column not found - assuming all employees are full-time")
     
+    # Check if we have full employee info available for consistent calculations
+    has_full_employee_info = hasattr(df, 'attrs') and 'full_employee_info' in df.attrs
+    
     # Create a dataframe to store results
     result = []
     
     # Process each division
     for division in unique_divisions:
-        # Define filters
-        division_filter = (tue_thu_df['Division'] == division)
-        location_filter = (tue_thu_df['Location'] == 'London UK')
-        working_filter = (tue_thu_df['Working Status'] == 'Hybrid')
-        
-        # London, Hybrid, Full-Time filter
-        if has_full_time:
-            full_time_filter = (tue_thu_df['is_full_time'] == True)
-            lhft_filter = location_filter & working_filter & full_time_filter
-        else:
-            lhft_filter = location_filter & working_filter
-        
-        # Division-specific eligible employees filter
-        div_eligible_filter = division_filter & lhft_filter
-        
         # Create arrays to store daily counts
         eligible_counts = []
         attendance_counts = []
@@ -154,23 +142,83 @@ def calculate_division_attendance_tue_thu(df: pd.DataFrame) -> pd.DataFrame:
         for date in tue_thu_dates:
             date_filter = (tue_thu_df['date_only'] == date)
             
-            # CRUCIAL DIFFERENCE: Get DISTINCT employee IDs for eligible employees on this date
-            # in this division who are London, Hybrid, Full-Time
-            eligible_emps = set(tue_thu_df[date_filter & div_eligible_filter]['employee_id'].unique())
-            eligible_count = len(eligible_emps)
+            # Define filters for attendance calculation
+            division_filter = (tue_thu_df['Division'] == division)
+            location_filter = (tue_thu_df['Location'] == 'London UK')
+            working_filter = (tue_thu_df['Working Status'] == 'Hybrid')
             
-            # CRUCIAL DIFFERENCE: Get DISTINCT employee IDs of those who were PRESENT
+            # London, Hybrid, Full-Time filter for attendance
+            if has_full_time:
+                full_time_filter = (tue_thu_df['is_full_time'] == True)
+                lhft_filter = location_filter & working_filter & full_time_filter
+            else:
+                lhft_filter = location_filter & working_filter
+            
+            # Division-specific eligible employees filter for attendance
+            div_eligible_filter = division_filter & lhft_filter
+            
+            # Get DISTINCT employee IDs of those who were PRESENT
             present_filter = date_filter & div_eligible_filter & (tue_thu_df['is_present'] == True)
             present_emps = set(tue_thu_df[present_filter]['employee_id'].unique())
             attendance_count = len(present_emps)
+            
+            # FIXED: Calculate eligible employee count using full employee info if available
+            if has_full_employee_info:
+                # Get full employee info DataFrame
+                full_emp_df = df.attrs['full_employee_info']
+                
+                # Apply employment date filter to full dataset
+                active_mask_full = (
+                    (pd.to_datetime(full_emp_df['Combined hire date']) <= date) &
+                    ((full_emp_df['Most recent day worked'].isna()) | 
+                     (pd.to_datetime(full_emp_df['Most recent day worked']) >= date))
+                )
+                
+                # Apply Division, London, Hybrid, Full-Time filter to full dataset
+                # Check if 'Division' column exists in full_emp_df
+                if 'Division' in full_emp_df.columns:
+                    division_mask_full = (full_emp_df['Division'] == division)
+                    
+                    london_hybrid_ft_mask_full = (
+                        (full_emp_df['Location'] == 'London UK') & 
+                        (full_emp_df['Working Status'] == 'Hybrid') &
+                        (full_emp_df['is_full_time'] == True)
+                    )
+                    
+                    # Count eligible employees from full employee pool for this division
+                    eligible_count = full_emp_df[
+                        active_mask_full & division_mask_full & london_hybrid_ft_mask_full
+                    ]['employee_id'].nunique()
+                else:
+                    # Fallback if Division is not in full_emp_df
+                    print(f"WARNING: 'Division' column not found in full employee info")
+                    # Use the filtered dataset for this case
+                    active_mask = (
+                        (pd.to_datetime(tue_thu_df['Combined hire date']) <= date) &
+                        ((tue_thu_df['Most recent day worked'].isna()) | 
+                         (pd.to_datetime(tue_thu_df['Most recent day worked']) >= date))
+                    )
+                    eligible_count = tue_thu_df[
+                        active_mask & div_eligible_filter
+                    ]['employee_id'].nunique()
+            else:
+                # Fallback to using the filtered dataset when full employee info is not available
+                active_mask = (
+                    (pd.to_datetime(tue_thu_df['Combined hire date']) <= date) &
+                    ((tue_thu_df['Most recent day worked'].isna()) | 
+                     (pd.to_datetime(tue_thu_df['Most recent day worked']) >= date))
+                )
+                eligible_count = tue_thu_df[
+                    active_mask & div_eligible_filter
+                ]['employee_id'].nunique()
             
             # Store counts for this date
             eligible_counts.append(eligible_count)
             attendance_counts.append(attendance_count)
         
         # Calculate averages across all dates
-        avg_eligible = sum(eligible_counts) / total_days
-        avg_attendance = sum(attendance_counts) / total_days
+        avg_eligible = sum(eligible_counts) / total_days if eligible_counts else 0
+        avg_attendance = sum(attendance_counts) / total_days if attendance_counts else 0
         
         # Calculate percentage
         if avg_eligible > 0:

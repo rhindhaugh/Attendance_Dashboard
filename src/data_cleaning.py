@@ -384,14 +384,22 @@ def add_full_time_indicators(df: pd.DataFrame, status_lookup: dict) -> pd.DataFr
 
 def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Add additional time-based analysis columns to the DataFrame."""
-    result = pd.DataFrame()
+    # Create copy of the input DataFrame rather than creating a new empty one
+    result = df.copy()
     
-    # Ensure Date/time is datetime and extract hour efficiently
-    if pd.api.types.is_datetime64_any_dtype(df['Date/time']):
-        result['hour'] = df['Date/time'].dt.hour
+    # Ensure parsed_time is available and extract hour efficiently
+    if 'parsed_time' in df.columns:
+        result['hour'] = df['parsed_time'].dt.hour
     else:
-        parsed_time = pd.to_datetime(df['Date/time'], dayfirst=True)
-        result['hour'] = parsed_time.dt.hour
+        # If parsed_time is not found, check for Date/time
+        if 'Date/time' in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df['Date/time']):
+                result['hour'] = df['Date/time'].dt.hour
+            else:
+                parsed_time = pd.to_datetime(df['Date/time'], dayfirst=True)
+                result['hour'] = parsed_time.dt.hour
+        else:
+            raise KeyError("Neither 'parsed_time' nor 'Date/time' column found in DataFrame")
     
     # Add time period categories using efficient categorization
     result['time_period'] = pd.cut(
