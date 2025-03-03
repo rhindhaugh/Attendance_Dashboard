@@ -1,4 +1,11 @@
 # Import all functions to maintain the same API as before
+import sys
+import os
+
+# Add parent directory to path to allow imports for all submodules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+# Now import the modules
 from .attendance_table import build_attendance_table
 from .attendance_counts import (
     calculate_visit_counts,

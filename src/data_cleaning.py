@@ -345,40 +345,96 @@ def is_full_time_on_date(emp_id: float, date: pd.Timestamp, status_lookup: dict)
             
     return most_recent_status == 'Full-Time'
 
-def add_full_time_indicators(df: pd.DataFrame, status_lookup: dict) -> pd.DataFrame:
+def add_full_time_indicators(df: pd.DataFrame, status_lookup: dict = None) -> pd.DataFrame:
     """
     Add a column indicating if each employee was Full-Time on each date.
     
+    This function efficiently adds a full-time indicator to each row by:
+    1. Using vectorized operations where possible
+    2. Only applying row-by-row processing when necessary
+    3. Handling special cases with appropriate logging
+    
     Args:
         df: DataFrame with key card and employee data
-        status_lookup: Dictionary from create_employment_status_lookup
+        status_lookup: Dictionary from create_employment_status_lookup (optional)
         
     Returns:
         DataFrame with 'is_full_time' column added
     """
+    import logging
+    try:
+        logger = logging.getLogger("attendance_dashboard.data_cleaning")
+    except:
+        # Fallback if logger isn't initialized
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger("attendance_dashboard.data_cleaning")
+    
     # Create a copy to avoid modifying the original
     result = df.copy()
     
-    # Add the is_full_time column
+    # Validate necessary columns
+    if 'employee_id' not in result.columns:
+        logger.error("Cannot add full-time indicators: missing employee_id column")
+        return df
+        
+    if 'date_only' not in result.columns and status_lookup is not None:
+        logger.error("Cannot add full-time indicators using status lookup: missing date_only column")
+        return df
+    
+    # Add the is_full_time column, defaulting to False
     result['is_full_time'] = False
     
-    # Check each row to determine if the employee was Full-Time on that date
-    for index, row in result.iterrows():
-        if pd.isna(row['employee_id']):
-            continue
-        
-        # Special case for Rob Hindhaugh (ID: 849) - always full-time
-        if row['employee_id'] == 849:
-            result.at[index, 'is_full_time'] = True
-        else:
-            result.at[index, 'is_full_time'] = is_full_time_on_date(
-                row['employee_id'],
-                row['date_only'],
-                status_lookup
-            )
+    # OPTIMIZATION: Apply special cases using vectorized operations
+    # Always mark Rob Hindhaugh (ID: 849) as full-time
+    special_case_ids = [849]  # Add other special cases as needed
+    for special_id in special_case_ids:
+        mask = result['employee_id'] == special_id
+        if mask.any():
+            result.loc[mask, 'is_full_time'] = True
+            logger.info(f"Marked {mask.sum()} rows for employee ID {special_id} as full-time")
     
-    print(f"Added is_full_time indicator to {len(result)} rows")
-    print(f"Employees marked as Full-Time: {result['is_full_time'].sum()} rows")
+    # If no status lookup provided, we're done (only special cases apply)
+    if status_lookup is None or not status_lookup:
+        logger.info(f"Added is_full_time indicator using only special cases")
+        logger.info(f"Employees marked as Full-Time: {result['is_full_time'].sum()} rows")
+        return result
+    
+    # OPTIMIZATION: Process each employee separately to minimize row-by-row operations
+    for emp_id in result['employee_id'].dropna().unique():
+        # Skip special cases that have already been handled
+        if emp_id in special_case_ids:
+            continue
+            
+        # Skip if this employee isn't in the status lookup
+        if emp_id not in status_lookup:
+            continue
+            
+        # Get status history for this employee
+        status_history = status_lookup[emp_id]
+        if not status_history:
+            continue
+            
+        # Get all rows for this employee
+        emp_mask = result['employee_id'] == emp_id
+        emp_rows = result[emp_mask]
+        
+        # For each date, find the applicable status
+        for date, status_rows in emp_rows.groupby('date_only'):
+            # Find the most recent status as of this date
+            most_recent_status = None
+            for change_date, status in status_history:
+                if change_date <= date:
+                    most_recent_status = status
+                else:
+                    break
+                    
+            # Mark as full-time if the status is 'Full-Time'
+            if most_recent_status == 'Full-Time':
+                date_mask = (result['employee_id'] == emp_id) & (result['date_only'] == date)
+                result.loc[date_mask, 'is_full_time'] = True
+    
+    logger.info(f"Added is_full_time indicator to {len(result)} rows")
+    logger.info(f"Employees marked as Full-Time: {result['is_full_time'].sum()} rows")
     
     return result
 
