@@ -9,14 +9,10 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
     df['Date/time'] = pd.to_datetime(df['Date/time'], dayfirst=True)
     df['date_only'] = pd.to_datetime(df['date_only'])
     
-    # Add more detailed debugging
-    print("\nOverall Dataset Analysis:")
-    print(f"Total unique dates: {df['date_only'].nunique()}")
+    # Only print essential dataset summary
+    print("\nDataset Summary:")
     print(f"Date range: {df['date_only'].min()} to {df['date_only'].max()}")
-    print("\nEntrance distribution by hour:")
-    print(df['Date/time'].dt.hour.value_counts().sort_index())
-    print("\nEntrance distribution by location:")
-    print(df['Where'].value_counts())
+    print(f"Total unique dates: {df['date_only'].nunique()}")
     
     # Get the date range of our key card data
     data_start_date = df['date_only'].min()
@@ -65,18 +61,7 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
                 (emp_data['date_only'].dt.dayofweek.isin([1, 2, 3]))
             ]
             
-            # Debug: Print sample of core attendance for this employee
-            if not core_attendance.empty:
-                print(f"\nDebug - Employee {emp_id} ({emp_name}) core attendance sample:")
-                print(f"Date/time dtype: {core_attendance['Date/time'].dtype}")
-                print("\nFirst 5 records sorted by Date/time:")
-                debug_sample = (
-                    core_attendance
-                    .sort_values('Date/time')
-                    .head()
-                    [['date_only', 'Date/time', 'Event', 'Where']]
-                )
-                print(debug_sample)
+            # Skip printing core attendance sample to reduce terminal output
             
             # Count unique core days attended
             core_days_attended = core_attendance['date_only'].nunique()
@@ -95,19 +80,8 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
                     .first()
                 )
                 
-                # Flag late entries (after 11:00)
+                # Flag late entries (after 11:00) but don't print them
                 late_entries = daily_first_entries[daily_first_entries.dt.hour >= 11]
-                if not late_entries.empty:
-                    print(f"\nLate entries for {emp_name}:")
-                    print(late_entries)
-                    print(f"Entrance locations for late entries:")
-                    print(core_attendance[
-                        core_attendance['date_only'].isin(late_entries.index)
-                    ]['Where'].value_counts())
-                
-                # Debug: Print first entries for verification
-                print("\nFirst entries of each day:")
-                print(daily_first_entries.head())
                 
                 # Extract just the time component
                 daily_times = daily_first_entries.dt.time
@@ -123,12 +97,6 @@ def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
                 hours = avg_minutes // 60
                 mins = avg_minutes % 60
                 avg_entry_time = f"{int(hours):02d}:{int(mins):02d}"
-                
-                # Debug: Print time calculation details
-                print(f"\nAverage calculation:")
-                print(f"Total minutes: {minutes.tolist()}")
-                print(f"Average minutes: {avg_minutes}")
-                print(f"Calculated time: {avg_entry_time}")
         
         result.append({
             'employee_name': emp_name,
@@ -267,11 +235,7 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
                     # Calculate mean excluding outliers and get list of excluded times
                     mean_no_outliers_str, excluded_times = calculate_mean_arrival_time(daily_entries)
                     
-                    # Debug logging for excluded times
-                    if excluded_times:
-                        print(f"\nExcluded arrival times for {emp_name}:")
-                        for time in excluded_times:
-                            print(f"  {time}")
+                    # We'll skip printing the excluded arrival times to keep terminal output shorter
         
         # Create result dictionary with basic fields
         result_dict = {
