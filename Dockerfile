@@ -1,8 +1,8 @@
- FROM python:3.10-slim
+  FROM python:3.10-slim
 
   WORKDIR /app
 
-  # Copy just requirements for debugging
+  # Copy requirements file
   COPY requirements.txt .
 
   # Debug commands
@@ -14,6 +14,5 @@
       pip install streamlit && \
       echo "Streamlit installation successful!"
 
-  # Just keep the container running for testing
-  CMD ["python", "-c", "import time; print('Container is running...'); 
-  time.sleep(3600)"]
+  # The CMD instruction needs to be a single command - this was the issue
+  CMD ["python", "-c", "import time; print('Container is running...'); time.sleep(3600)"]
