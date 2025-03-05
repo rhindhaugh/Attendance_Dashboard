@@ -1,18 +1,29 @@
-  FROM python:3.10-slim
+ FROM python:3.10-slim
 
   WORKDIR /app
 
   # Copy requirements file
   COPY requirements.txt .
 
-  # Debug commands
-  RUN echo "Python version:" && python --version && \
-      echo "Pip version:" && pip --version && \
-      echo "Directory contents:" && ls -la && \
-      echo "Requirements file contents:" && cat requirements.txt && \
-      echo "Installing streamlit only:" && \
-      pip install streamlit && \
-      echo "Streamlit installation successful!"
+  # Install dependencies
+  RUN pip install --upgrade pip && \
+      pip install --no-cache-dir -r requirements.txt
 
-  # The CMD instruction needs to be a single command - this was the issue
-  CMD ["python", "-c", "import time; print('Container is running...'); time.sleep(3600)"]
+  # Copy the rest of the application
+  COPY . .
+
+  # Create directories for data if they don't exist
+  RUN mkdir -p data/raw data/processed logs
+
+  # Expose the port Streamlit will run on
+  EXPOSE 8501
+
+  # Set up environment variables
+  ENV PYTHONUNBUFFERED=1 \
+      PYTHONDONTWRITEBYTECODE=1 \
+      STREAMLIT_SERVER_PORT=8501 \
+      STREAMLIT_SERVER_HEADLESS=true \
+      STREAMLIT_SERVER_ENABLE_CORS=false
+
+  # Command to run the application
+  CMD ["streamlit", "run", "src/dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
