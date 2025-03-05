@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 env:
-  REGISTRY: your-registry-url.com
-  IMAGE_NAME: attendance-dashboard
+  REGISTRY: docker.io
+  IMAGE_NAME: robhindhaugh/attendance-dashboard
 
 jobs:
   build-and-push:
