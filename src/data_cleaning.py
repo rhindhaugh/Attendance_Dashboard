@@ -1,6 +1,17 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import logging
+import os
+import sys
+
+# Add parent directory to path to allow imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from src.config import SPECIAL_EMPLOYEE_IDS
+from src.utils import optimize_dataframe_memory
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("attendance_dashboard.data_cleaning")
 
 def load_key_card_data(filepath: str) -> pd.DataFrame:
     """Load key card data from CSV file."""
@@ -95,12 +106,12 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
         result['employee_id'] = pd.to_numeric(df['User'].str.extract(r'^(\d+)', expand=False), 
                                            errors='coerce')
         
-        # Handle special cases
+        # Handle special cases - use IDs from configuration
         special_cases = {
             "Arorra, Aakash": 378, 
             "Payne, James": 735,
-            "Mueller, Benjamin": 867,
-            "Hindhaugh, Robert": 849
+            "Mueller, Benjamin": SPECIAL_EMPLOYEE_IDS.get('BENJAMIN_MUELLER', 867),
+            "Hindhaugh, Robert": SPECIAL_EMPLOYEE_IDS.get('ROBERT_HINDHAUGH', 849)
         }
 
         # After the regular extraction, check for special cases

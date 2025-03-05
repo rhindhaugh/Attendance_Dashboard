@@ -1,4 +1,19 @@
 import pandas as pd
+import logging
+import sys
+import os
+
+# Add parent directory to path to allow imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.data_analysis.common import (
+    get_employment_date_mask, 
+    get_london_hybrid_ft_mask, 
+    calculate_eligible_employees,
+    calculate_present_employees,
+    calculate_attendance_percentage
+)
+
+logger = logging.getLogger("attendance_dashboard.data_analysis.attendance_percentage")
 
 def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -8,56 +23,51 @@ def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
     - Have hybrid working status
     - Are full-time employees on that date
     - Were employed on that date (after hire date, before resignation)
+    
+    Uses common utility functions to ensure consistent calculations across the application.
     """
+    # Validate input
+    if df is None or df.empty:
+        logger.warning("Empty DataFrame provided for daily attendance percentage calculation")
+        return pd.DataFrame()
+    
+    # Check for required columns
+    required_columns = ['date_only', 'employee_id', 'is_present', 'Combined hire date']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        logger.error(f"Missing required columns for daily attendance percentage: {missing_columns}")
+        return pd.DataFrame()
+    
+    # Get full employee DataFrame if available for more accurate counts
+    full_employee_df = df.attrs['full_employee_info'] if hasattr(df, 'attrs') and 'full_employee_info' in df.attrs else None
+    
     # Get all unique dates and sort them
+    logger.debug(f"Calculating daily attendance percentage for {df['date_only'].nunique()} unique dates")
     all_dates = sorted(df['date_only'].unique())
     
     # Initialize results
     daily_attendance = []
     
     for date in all_dates:
-        # Filter for employees who were employed on this date
-        active_mask = (
-            (pd.to_datetime(df['Combined hire date']) <= date) &
-            (
-                (df['Most recent day worked'].isna()) |  # Still employed
-                (pd.to_datetime(df['Most recent day worked']) >= date)  # Not yet left
-            )
-        )
-        
-        # Filter for London, Hybrid, Full-Time employees
-        location_mask = (df['Location'] == 'London UK')
-        working_mask = (df['Working Status'] == 'Hybrid')
-        full_time_mask = (df['is_full_time'] == True)
-        
-        # Combined mask for London, Hybrid, Full-Time
-        london_hybrid_ft_mask = location_mask & working_mask & full_time_mask
-        
-        # Get total eligible employees for this date
-        eligible_employees = df[
-            active_mask & london_hybrid_ft_mask
-        ]['employee_id'].nunique()
-        
-        # Get employees who were present
-        present_employees = df[
-            (df['date_only'] == date) &
-            active_mask & 
-            london_hybrid_ft_mask &
-            (df['is_present'] == True)
-        ]['employee_id'].nunique()
-        
-        # Calculate percentage
-        if eligible_employees > 0:
-            percentage = (present_employees / eligible_employees) * 100
-        else:
-            percentage = 0
-        
-        daily_attendance.append({
-            'date': date,
-            'total_eligible': eligible_employees,
-            'total_present': present_employees,
-            'percentage': round(percentage, 1)
-        })
+        try:
+            # Calculate eligible employees using common utility function
+            eligible_employees = calculate_eligible_employees(df, date, full_employee_df)
+            
+            # Calculate present employees using common utility function
+            present_employees = calculate_present_employees(df, date, lhft_only=True)
+            
+            # Calculate percentage using common utility function
+            percentage = calculate_attendance_percentage(present_employees, eligible_employees)
+            
+            daily_attendance.append({
+                'date': date,
+                'total_eligible': eligible_employees,
+                'total_present': present_employees,
+                'percentage': round(percentage, 1)
+            })
+        except Exception as e:
+            logger.error(f"Error calculating attendance for date {date}: {e}")
+            # Skip this date but continue processing others
     
     return pd.DataFrame(daily_attendance)
 

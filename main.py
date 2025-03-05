@@ -10,12 +10,23 @@ from src.data_analysis import (
     calculate_visit_counts,
     calculate_average_arrival_hour
 )
-from src.utils import setup_logging, safe_data_frame_operation
+from src.utils import setup_logging, safe_data_frame_operation, optimize_dataframe_memory
+from src.config import (
+    KEY_CARD_DATA_PATH, 
+    EMPLOYEE_INFO_PATH,
+    COMBINED_DATA_TEMPLATE,
+    ATTENDANCE_TABLE_TEMPLATE,
+    VISIT_COUNTS_TEMPLATE,
+    AVG_ARRIVAL_HOURS_TEMPLATE,
+    DAYS_SUMMARY_TEMPLATE,
+    DEFAULT_ANALYSIS_DAYS
+)
 import argparse
 from datetime import datetime, timedelta
 import time
 import gc
 import logging
+import pandas as pd
 
 def main():
     """
@@ -32,11 +43,12 @@ def main():
     logger = setup_logging()
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Process key card data with date filtering')
-    parser.add_argument('--last-days', type=int, default=365, 
-                      help='Process only the last N days of data (default: 365)')
+    parser.add_argument('--last-days', type=int, default=DEFAULT_ANALYSIS_DAYS, 
+                      help=f'Process only the last N days of data (default: {DEFAULT_ANALYSIS_DAYS})')
     parser.add_argument('--start-date', type=str, help='Start date in YYYY-MM-DD format')
     parser.add_argument('--end-date', type=str, help='End date in YYYY-MM-DD format')
     parser.add_argument('--all-data', action='store_true', help='Process all data regardless of date')
+    parser.add_argument('--optimize-memory', action='store_true', help='Optimize memory usage (slower but uses less RAM)')
     args = parser.parse_args()
     
     # Start timing
@@ -48,14 +60,19 @@ def main():
     last_n_days = None
     
     if args.all_data:
-        print("Processing all data (no date filtering)")
+        logger.info("Processing all data (no date filtering)")
     elif args.start_date and args.end_date:
         start_date = args.start_date
         end_date = args.end_date
-        print(f"Processing data from {start_date} to {end_date}")
+        logger.info(f"Processing data from {start_date} to {end_date}")
     else:
         last_n_days = args.last_days
-        print(f"Processing data from the last {last_n_days} days")
+        logger.info(f"Processing data from the last {last_n_days} days")
+        
+    # Whether to optimize memory usage
+    optimize_memory = args.optimize_memory
+    if optimize_memory:
+        logger.info("Memory optimization enabled - this may slow down processing but will use less RAM")
 
     # STEP 1: Load data with date filtering
     logger.info("STEP 1: Loading data...")
@@ -65,11 +82,15 @@ def main():
         load_key_card_data,
         "Failed to load key card data",
         logger,
-        "data/raw/key_card_access.csv", 
+        str(KEY_CARD_DATA_PATH), 
         start_date=start_date, 
         end_date=end_date, 
         last_n_days=last_n_days
     )
+    
+    # Optimize memory if requested
+    if optimize_memory and key_card_df is not None:
+        key_card_df = optimize_dataframe_memory(key_card_df, logger)
     
     if key_card_df is None:
         logger.error("Critical error: Failed to load key card data. Exiting.")
@@ -83,8 +104,12 @@ def main():
         load_employee_info,
         "Failed to load employee data",
         logger,
-        "data/raw/employee_info.csv"
+        str(EMPLOYEE_INFO_PATH)
     )
+    
+    # Optimize memory if requested
+    if optimize_memory and employee_df is not None:
+        employee_df = optimize_dataframe_memory(employee_df, logger)
     
     if employee_df is None:
         logger.error("Critical error: Failed to load employee data. Exiting.")
@@ -236,36 +261,31 @@ def main():
     else:
         suffix = "all_data"
     
-    # Ensure the processed directory exists
-    from pathlib import Path
-    processed_dir = Path("data/processed")
-    processed_dir.mkdir(exist_ok=True, parents=True)
-    
     # Save all data with error handling
     try:
         # Save combined data
-        output_path = f"data/processed/combined_data_{suffix}.parquet"
+        output_path = COMBINED_DATA_TEMPLATE.format(suffix)
         combined_df.to_parquet(output_path, index=False)
         logger.info(f"Saved combined data to {output_path}")
         
         # Save analysis results
         if not attendance_table.empty:
-            output_path = f"data/processed/attendance_table_{suffix}.csv"
+            output_path = ATTENDANCE_TABLE_TEMPLATE.format(suffix)
             attendance_table.to_csv(output_path, index=False)
             logger.info(f"Saved attendance table to {output_path}")
             
         if not visit_counts.empty:
-            output_path = f"data/processed/visit_counts_{suffix}.csv"
+            output_path = VISIT_COUNTS_TEMPLATE.format(suffix)
             visit_counts.to_csv(output_path, index=False)
             logger.info(f"Saved visit counts to {output_path}")
             
         if not avg_arrival_hours.empty:
-            output_path = f"data/processed/avg_arrival_hours_{suffix}.csv"
+            output_path = AVG_ARRIVAL_HOURS_TEMPLATE.format(suffix)
             avg_arrival_hours.to_csv(output_path, index=False)
             logger.info(f"Saved average arrival hours to {output_path}")
             
         if not days_summary.empty:
-            output_path = f"data/processed/days_summary_{suffix}.csv"
+            output_path = DAYS_SUMMARY_TEMPLATE.format(suffix)
             days_summary.to_csv(output_path, index=False)
             logger.info(f"Saved days summary to {output_path}")
     except Exception as e:

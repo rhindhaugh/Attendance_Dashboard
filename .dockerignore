@@ -1,4 +1,15 @@
-# Python
+# Version control
+.git
+.gitignore
+.github
+
+# Environment and testing
+venv/
+venvasaS/
+.env
+.venv
+.pytest_cache
+.coverage
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,18 +31,11 @@ var/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-venvasaS/
-ENV/
-.env
-.venv
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# Documentation
+docs/
+*.md
+!README.md
+LICENSE
 
 # OS generated files
 .DS_Store
@@ -42,20 +46,16 @@ ENV/
 ehthumbs.db
 Thumbs.db
 
-# Local data
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local data that shouldn't be included
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
 logs/*
 !logs/.gitkeep
-
-# Jupyter notebook checkpoints
-.ipynb_checkpoints
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-coverage.xml
-*.cover
