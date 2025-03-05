@@ -5,9 +5,13 @@ WORKDIR /app
 # Copy requirements file
 COPY requirements.txt .
 
-# Install dependencies
+# Install dependencies with detailed debugging
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip list && \
+    echo "Contents of requirements.txt:" && \
+    cat requirements.txt && \
+    echo "Attempting to install packages..." && \
+    pip install --no-cache-dir -r requirements.txt || { echo "INSTALLATION FAILED"; pip install --no-cache-dir --verbose -r requirements.txt; exit 1; }
 
 # Copy the rest of the application
 COPY . .
