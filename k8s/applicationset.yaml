@@ -1,0 +1,36 @@
+ apiVersion: argoproj.io/v1alpha1
+  kind: ApplicationSet
+  metadata:
+    name: attendance-dashboard
+  spec:
+    generators:
+    - list:
+        elements:
+        - cluster: in-cluster
+          environment: dev
+    template:
+      metadata:
+        name: 'attendance-dashboard-{{values.environment}}'
+      spec:
+        project: default
+        source:
+          repoURL: 'https://github.com/rhindhaugh/Attendance_Dashboard.git'
+          targetRevision: main
+          path: k8s/helm/attendance-dashboard
+          helm:
+            values: |
+              image:
+                repository: docker.io/rhindhaugh/attendance-dashboard
+                tag: latest
+              ingress:
+                hosts:
+                  - host: attendance-dashboard.team.int.zable.co.uk
+        destination:
+          server: 'https://kubernetes.default.svc'
+          namespace: attendance-dashboard
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+          syncOptions:
+          - CreateNamespace=true
