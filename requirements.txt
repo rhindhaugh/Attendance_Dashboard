@@ -1,6 +1,5 @@
-pandas==2.0.0
-numpy==1.24.0
-jupyter==1.0.0
-plotly==5.13.0
-streamlit==1.20.0
-pytest==7.3.1
+  pandas<2.0.0  # Must be below 2.0.0 for Streamlit 1.20.0
+  numpy==1.24.0
+  plotly==5.13.0
+  streamlit==1.20.0
+  pytest==7.3.1
