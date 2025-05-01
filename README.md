@@ -35,14 +35,29 @@ A dashboard for analyzing employee attendance data, providing insights on office
    pip install -r requirements.txt
    ```
 
-4. Place input data in the `data/raw` directory:
+4. Data sources configuration:
+   
+   Place input data in the `data/raw` directory:
    - `key_card_access.csv`: Key card access records
    - `employee_info.csv`: Employee information
-   - `employment_status_history.csv`: Employment status history (optional)
+   - `employment_status_history.csv`: Employment status history
 
-5. Run the dashboard:
+5. If you have new key card data to merge with existing data:
+   ```bash
+   python merge_key_card_data.py --new path/to/new_data.csv
+   ```
+
+6. Run the dashboard:
    ```bash
    streamlit run src/dashboard.py
+   ```
+
+7. Maintenance utilities:
+   ```bash
+   # Clean up backup files
+   python cleanup_backups.py --list    # List backup files
+   python cleanup_backups.py --archive # Archive backup files
+   python cleanup_backups.py --remove  # Remove backup files
    ```
 
 ### Using the CLI
