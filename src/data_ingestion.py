@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import logging
 import os
 import sys
+import shutil
 
 # Add parent directory to path to allow imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -275,11 +276,109 @@ def calculate_default_date_range(days=DEFAULT_ANALYSIS_DAYS):
     logger.debug(f"Calculated default date range: {start_str} to {end_str} ({days} days)")
     return start_str, end_str
 
+def merge_key_card_data(existing_filepath: str, new_filepath: str, output_filepath: str = None, 
+                    create_backup: bool = True) -> pd.DataFrame:
+    """
+    Merge existing key card data with new data, removing duplicates.
+    
+    Args:
+        existing_filepath: Path to existing key card data CSV
+        new_filepath: Path to new key card data CSV
+        output_filepath: Path to save the merged data (defaults to existing_filepath)
+        create_backup: Whether to create a backup of the existing file
+        
+    Returns:
+        DataFrame containing the merged data
+    """
+    try:
+        # Set default output filepath if not provided
+        if output_filepath is None:
+            output_filepath = existing_filepath
+            
+        # Check that both files exist
+        existing_path = Path(existing_filepath)
+        new_path = Path(new_filepath)
+        
+        if not existing_path.exists():
+            logger.error(f"Existing file not found: {existing_filepath}")
+            return pd.DataFrame()
+            
+        if not new_path.exists():
+            logger.error(f"New file not found: {new_filepath}")
+            return pd.DataFrame()
+        
+        # Create backup if requested
+        if create_backup and existing_path.exists():
+            backup_path = existing_path.with_suffix('.backup.csv')
+            logger.info(f"Creating backup of existing data at {backup_path}")
+            shutil.copy2(existing_filepath, backup_path)
+        
+        # Load both datasets
+        logger.info(f"Loading existing data from {existing_filepath}")
+        existing_df = pd.read_csv(existing_filepath, low_memory=False)
+        logger.info(f"Loaded {len(existing_df):,} rows from existing file")
+        
+        logger.info(f"Loading new data from {new_filepath}")
+        new_df = pd.read_csv(new_filepath, low_memory=False)
+        logger.info(f"Loaded {len(new_df):,} rows from new file")
+        
+        # Check if both dataframes have the same columns
+        if set(existing_df.columns) != set(new_df.columns):
+            logger.warning("Column mismatch between existing and new data!")
+            logger.warning(f"Existing columns: {existing_df.columns.tolist()}")
+            logger.warning(f"New columns: {new_df.columns.tolist()}")
+            
+            # Use intersection of columns
+            common_columns = list(set(existing_df.columns) & set(new_df.columns))
+            logger.info(f"Using {len(common_columns)} common columns for merge")
+            
+            existing_df = existing_df[common_columns]
+            new_df = new_df[common_columns]
+        
+        # Ensure Date/time is parsed consistently for de-duplication
+        try:
+            if 'Date/time' in existing_df.columns:
+                existing_df['Date/time'] = pd.to_datetime(existing_df['Date/time'], dayfirst=True, errors='coerce')
+                new_df['Date/time'] = pd.to_datetime(new_df['Date/time'], dayfirst=True, errors='coerce')
+        except Exception as e:
+            logger.error(f"Error converting Date/time: {str(e)}")
+        
+        # Concatenate dataframes
+        logger.info("Concatenating datasets")
+        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+        total_rows = len(combined_df)
+        logger.info(f"Combined dataset has {total_rows:,} rows before deduplication")
+        
+        # Remove duplicates
+        logger.info("Removing duplicate rows")
+        combined_df.drop_duplicates(inplace=True)
+        deduped_rows = len(combined_df)
+        duplicates_removed = total_rows - deduped_rows
+        logger.info(f"Removed {duplicates_removed:,} duplicate rows")
+        logger.info(f"Final dataset has {deduped_rows:,} rows")
+        
+        # Convert Date/time back to string for consistent storage
+        if 'Date/time' in combined_df.columns and pd.api.types.is_datetime64_any_dtype(combined_df['Date/time']):
+            combined_df['Date/time'] = combined_df['Date/time'].dt.strftime('%d/%m/%Y %H:%M:%S')
+        
+        # Save the merged dataset
+        logger.info(f"Saving merged dataset to {output_filepath}")
+        combined_df.to_csv(output_filepath, index=False)
+        logger.info(f"Merged data saved successfully")
+        
+        return combined_df
+    
+    except Exception as e:
+        logger.error(f"Error merging key card data: {str(e)}")
+        return pd.DataFrame()
+
+
 if __name__ == "__main__":
     # Example usage
     base_path = Path(__file__).resolve().parent.parent  # go up one level from 'src'
     key_card_path = base_path / "data" / "raw" / "key_card_access.csv"
     employee_info_path = base_path / "data" / "raw" / "employee_info.csv"
+    employment_history_path = base_path / "data" / "raw" / "employment_status_history.csv"
 
     # Example 1: Load all data
     print("\nLoading all data:")
@@ -304,3 +403,6 @@ if __name__ == "__main__":
     # Load employee info
     employee_info_df = load_employee_info(str(employee_info_path))
     print("\nEmployee info shape:", employee_info_df.shape)
+    
+    # Example 4: Merge key card data
+    # merge_key_card_data("path/to/existing.csv", "path/to/new.csv")

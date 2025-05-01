@@ -26,7 +26,8 @@ from .segmentation import (
 )
 from .employee_metrics import (
     calculate_individual_attendance,
-    create_employee_summary
+    create_employee_summary,
+    get_daily_employee_attendance
 )
 from .reports import (
     calculate_daily_attendance_counts,

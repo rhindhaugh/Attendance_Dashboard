@@ -13,7 +13,8 @@ from src.data_cleaning import (
     clean_employee_info, 
     add_full_time_indicators,
     merge_key_card_with_employee_info,
-    add_time_analysis_columns
+    add_time_analysis_columns,
+    normalize_compliance_divisions
 )
 
 class TestDataCleaning(unittest.TestCase):
@@ -35,7 +36,21 @@ class TestDataCleaning(unittest.TestCase):
             'Hire Date': ['01/01/2022', '15/02/2022', '03/01/2022'],
             'Location': ['London UK', 'Paris FR', 'London UK'],
             'Working Status': ['Hybrid', 'Office', 'Hybrid'],
-            'Status': ['Active', 'Active', 'Active']
+            'Status': ['Active', 'Active', 'Active'],
+            'Division': ['Operations', 'Finance', 'Technology']
+        })
+        
+        # Create a test dataframe with compliance divisions
+        self.compliance_df = pd.DataFrame({
+            'Division': [
+                'Compliance - UK',
+                'Compliance - US',
+                'Compliance',
+                'Operations',
+                'Finance',
+                None,
+                np.nan
+            ]
         })
         
         # Create a simple status history lookup
@@ -61,19 +76,41 @@ class TestDataCleaning(unittest.TestCase):
     
     def test_clean_employee_info(self):
         """Test the clean_employee_info function."""
+        # Create a test dataframe with the required columns for clean_employee_info
+        test_df = pd.DataFrame({
+            'Employee #': ['123', '456', '849'],
+            'Last name, First name': ['Doe, John', 'Smith, Jane', 'Hindhaugh, Robert'],
+            'Hire Date': ['01/01/2022', '15/02/2022', '03/01/2022'],
+            'Location': ['London UK', 'Paris FR', 'London UK'],
+            'Working Status': ['Hybrid', 'Office', 'Hybrid'],
+            'Status': ['Active', 'Active', 'Active'],
+            'Division': ['Operations', 'Compliance - UK', 'Compliance - US']
+        })
+        
         # Call the function
-        result = clean_employee_info(self.employee_df)
+        result = clean_employee_info(test_df)
         
         # Check that Combined hire date was added
         self.assertTrue('Combined hire date' in result.columns)
         
         # Check that hire dates were converted to datetime
         self.assertTrue(pd.api.types.is_datetime64_dtype(result['Combined hire date']))
+        
+        # Check that compliance divisions were normalized
+        self.assertEqual(result.loc[1, 'Division'], 'Compliance')
+        self.assertEqual(result.loc[2, 'Division'], 'Compliance')
     
     def test_add_full_time_indicators(self):
         """Test the add_full_time_indicators function."""
+        # Prepare data with required columns
+        df = pd.DataFrame({
+            'employee_id': [123.0, 456.0, 849.0],
+            'User': ['123 Doe, John', '456 Smith, Jane', 'Hindhaugh, Robert'],
+            'date_only': [pd.Timestamp('2024-03-01')] * 3
+        })
+        
         # Call the function
-        result = add_full_time_indicators(self.key_card_df, self.status_lookup)
+        result = add_full_time_indicators(df, self.status_lookup)
         
         # Check that is_full_time column was added
         self.assertTrue('is_full_time' in result.columns)
@@ -96,6 +133,47 @@ class TestDataCleaning(unittest.TestCase):
         
         # Check that hour values are correct
         self.assertEqual(result['hour'].tolist(), [9, 8, 10])
+        
+    @patch('src.data_cleaning.logger')
+    def test_normalize_compliance_divisions(self, mock_logger):
+        """Test the normalize_compliance_divisions function."""
+        # Call the function
+        result = normalize_compliance_divisions(self.compliance_df['Division'])
+        
+        # Check that all compliance divisions are normalized to 'Compliance'
+        expected_values = [
+            'Compliance',  # Was Compliance - UK
+            'Compliance',  # Was Compliance - US
+            'Compliance',  # Was already Compliance
+            'Operations',  # Not a compliance division
+            'Finance',     # Not a compliance division
+            None,          # Null value should remain null
+            np.nan         # NaN value should remain NaN
+        ]
+        
+        # Convert result to a list for comparison, handling None and NaN values
+        result_values = []
+        for val in result:
+            if pd.isna(val):
+                if val is None:
+                    result_values.append(None)
+                else:
+                    result_values.append(np.nan)
+            else:
+                result_values.append(val)
+        
+        # Check first 5 values (we can't directly compare None and NaN)
+        for i in range(5):
+            self.assertEqual(result_values[i], expected_values[i])
+        
+        # Check that None remains None
+        self.assertIsNone(result_values[5])
+        
+        # Check that NaN remains NaN
+        self.assertTrue(pd.isna(result_values[6]))
+        
+        # Verify logging
+        mock_logger.info.assert_called_once_with("Normalized 3 compliance division entries")
 
 if __name__ == '__main__':
     unittest.main()

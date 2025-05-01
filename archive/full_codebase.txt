@@ -1,0 +1,2964 @@
+== START OF PROJECT CODEBASE DUMP ==
+Project root: /Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard
+
+== DIRECTORY STRUCTURE (FILTERED) ==
+- ./
+  - README.md
+  - code_writer.py
+  - full_codebase.txt
+  - main.py
+  - requirements.txt
+  - system_prompt.md
+- ./tests/
+  - test_data_cleaning.py
+- ./data/
+  - ./data/processed/
+    - attendance_table.csv
+    - avg_arrival_hours.csv
+    - combined_data.csv
+    - days_summary.csv
+    - visit_counts.csv
+  - ./data/raw/
+    - employee_info.csv
+    - key_card_access.csv
+    - ./data/raw/csv_combiner/
+      - csv_combiner.py
+      - ./data/raw/csv_combiner/input_files/
+        - (1)Jan23-Jul23.csv
+        - (2)Aug23-Jan24.csv
+        - (3)Jan24-Jun24.csv
+        - (4)Jul24-Dec24.csv
+        - (5)Jan25-today.csv
+- ./notebooks/
+- ./src/
+  - dashboard.py
+  - data_analysis.py
+  - data_cleaning.py
+  - data_ingestion.py
+  - data_visualization.py
+
+== FILE CONTENTS (FILTERED) ==
+
+==== START OF FILE: README.md ====
+# Attendance Dashboard
+
+## Description
+This project provides an attendance dashboard for monitoring employee access.
+
+## Installation
+Installation instructions here.
+
+## Usage
+Usage instructions here.
+
+==== END OF FILE: README.md ====
+
+==== START OF FILE: code_writer.py ====
+#!/usr/bin/env python3
+"""
+code_writer.py
+
+Place this script in the root of your project. When run, it will generate a file
+called 'full_codebase.txt' in the same folder. The output file contains:
+
+1. A directory structure (folder/file hierarchy) for your code/data (excluding
+   generic/system folders like .git, venv, node_modules, etc.).
+2. The contents of each relevant file, prefaced by its path.
+   - By default, we include .py, .csv, .txt, .md, .json, .yaml, .yml.
+   - We skip other file types (feel free to adjust).
+3. For CSV files, only the first 50 lines are included.
+4. The result is a single text file you can upload to an LLM for context.
+
+Usage:
+    python code_writer.py
+"""
+
+import os
+
+OUTPUT_FILENAME = "full_codebase.txt"
+MAX_CSV_LINES = 50
+
+# Directories to skip
+EXCLUDED_DIRS = {
+    ".git",
+    "venv",
+    "__pycache__",
+    "node_modules",
+    ".idea",
+    ".vscode",
+    ".cache"
+}
+
+# File extensions we want to include
+ALLOWED_EXTENSIONS = {
+    ".py",
+    ".csv",
+    ".txt",
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml"
+}
+
+def main():
+    project_root = os.path.abspath(".")
+    with open(OUTPUT_FILENAME, "w", encoding="utf-8") as out_file:
+        out_file.write("== START OF PROJECT CODEBASE DUMP ==\n")
+        out_file.write(f"Project root: {project_root}\n\n")
+
+        # 1) Write directory structure
+        out_file.write("== DIRECTORY STRUCTURE (FILTERED) ==\n")
+        for root, dirs, files in os.walk(project_root):
+            # Filter out excluded directories
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+
+            # Calculate indentation based on depth
+            rel_path = os.path.relpath(root, project_root)
+            level = rel_path.count(os.sep)
+            indent = "  " * level
+            short_root = "." if rel_path == "." else f".{os.sep}{rel_path}"
+            out_file.write(f"{indent}- {short_root}/\n")
+
+            # Filter files by allowed extensions
+            for f in sorted(files):
+                ext = os.path.splitext(f)[1].lower()
+                if ext in ALLOWED_EXTENSIONS:
+                    sub_indent = "  " * (level + 1)
+                    out_file.write(f"{sub_indent}- {f}\n")
+
+        out_file.write("\n== FILE CONTENTS (FILTERED) ==\n")
+
+        # 2) Write the contents of each allowed file
+        for root, dirs, files in os.walk(project_root):
+            # Filter out excluded directories
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+
+            for filename in sorted(files):
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in ALLOWED_EXTENSIONS:
+                    continue  # Skip non-allowed file extensions
+
+                file_path = os.path.join(root, filename)
+                # Skip the output file itself
+                if os.path.abspath(file_path) == os.path.abspath(os.path.join(project_root, OUTPUT_FILENAME)):
+                    continue
+
+                # Prepare relative path for display
+                relative_path = os.path.relpath(file_path, project_root)
+
+                out_file.write(f"\n==== START OF FILE: {relative_path} ====\n")
+
+                # If it's a CSV, only read first 50 lines
+                if ext == ".csv":
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            for i, line in enumerate(f):
+                                if i >= MAX_CSV_LINES:
+                                    out_file.write("... [Truncated after 50 lines]\n")
+                                    break
+                                out_file.write(line)
+                    except Exception as e:
+                        out_file.write(f"[Error reading CSV: {e}]\n")
+
+                else:
+                    # For allowed non-CSV files, read everything
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            contents = f.read()
+                            out_file.write(contents)
+                    except Exception as e:
+                        out_file.write(f"[Error reading file: {e}]\n")
+
+                out_file.write(f"\n==== END OF FILE: {relative_path} ====\n")
+
+        out_file.write("\n== END OF PROJECT CODEBASE DUMP ==\n")
+
+if __name__ == "__main__":
+    main()
+
+==== END OF FILE: code_writer.py ====
+
+==== START OF FILE: main.py ====
+from src.data_ingestion import load_key_card_data, load_employee_info, calculate_default_date_range
+from src.data_cleaning import (
+    clean_key_card_data,
+    clean_employee_info,
+    merge_key_card_with_employee_info,
+    add_time_analysis_columns
+)
+from src.data_analysis import (
+    build_attendance_table,
+    calculate_visit_counts,
+    calculate_average_arrival_hour
+)
+import argparse
+from datetime import datetime, timedelta
+import time
+import gc
+
+def main():
+    """
+    This function will:
+    1. Load the key card data from data/raw/key_card_access.csv with date filtering
+    2. Load the employee info data from data/raw/employee_info.csv
+    3. Clean both datasets
+    4. Add time analysis columns
+    5. Merge them
+    6. Run attendance analysis
+    7. Save results
+    """
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Process key card data with date filtering')
+    parser.add_argument('--last-days', type=int, default=365, 
+                      help='Process only the last N days of data (default: 365)')
+    parser.add_argument('--start-date', type=str, help='Start date in YYYY-MM-DD format')
+    parser.add_argument('--end-date', type=str, help='End date in YYYY-MM-DD format')
+    parser.add_argument('--all-data', action='store_true', help='Process all data regardless of date')
+    args = parser.parse_args()
+    
+    # Start timing
+    total_start_time = time.time()
+    
+    # Determine date range for filtering
+    start_date = None
+    end_date = None
+    last_n_days = None
+    
+    if args.all_data:
+        print("Processing all data (no date filtering)")
+    elif args.start_date and args.end_date:
+        start_date = args.start_date
+        end_date = args.end_date
+        print(f"Processing data from {start_date} to {end_date}")
+    else:
+        last_n_days = args.last_days
+        print(f"Processing data from the last {last_n_days} days")
+
+    # STEP 1: Load data with date filtering
+    print("\nSTEP 1: Loading data...")
+    step_start_time = time.time()
+    
+    key_card_df = load_key_card_data(
+        "data/raw/key_card_access.csv", 
+        start_date=start_date, 
+        end_date=end_date, 
+        last_n_days=last_n_days
+    )
+    print("Key card dataframe columns:", key_card_df.columns.tolist())
+    print(f"Loaded key card data: {len(key_card_df):,} rows")
+    if not key_card_df.empty:
+        print(f"Date range: {key_card_df['Date/time'].min()} to {key_card_df['Date/time'].max()}")
+
+    employee_df = load_employee_info("data/raw/employee_info.csv")
+    print("\nEmployee info columns:", employee_df.columns.tolist())
+    print(f"Loaded employee data: {len(employee_df):,} rows")
+    
+    print(f"Data loading completed in {time.time() - step_start_time:.2f} seconds")
+
+    # STEP 2: Clean data
+    print("\nSTEP 2: Cleaning data...")
+    step_start_time = time.time()
+    
+    key_card_df = clean_key_card_data(key_card_df)
+    employee_df = clean_employee_info(employee_df)
+    
+    print(f"Data cleaning completed in {time.time() - step_start_time:.2f} seconds")
+
+    # STEP 3: Add time analysis columns
+    print("\nSTEP 3: Adding time analysis columns...")
+    step_start_time = time.time()
+    
+    key_card_df = add_time_analysis_columns(key_card_df)
+    
+    print(f"Time analysis completed in {time.time() - step_start_time:.2f} seconds")
+
+    # STEP 4: Merge data
+    print("\nSTEP 4: Merging datasets...")
+    step_start_time = time.time()
+    
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+    
+    # Clean up memory
+    del key_card_df
+    del employee_df
+    gc.collect()
+    
+    print(f"Data merging completed in {time.time() - step_start_time:.2f} seconds")
+
+    # STEP 5: Print shapes / head of data
+    print("\nSTEP 5: Final dataset information")
+    print(f"Combined shape: {combined_df.shape[0]:,} rows, {combined_df.shape[1]} columns")
+
+    # STEP 6: Run attendance analysis
+    print("\nSTEP 6: Running attendance analysis...")
+    step_start_time = time.time()
+    
+    attendance_table = build_attendance_table(combined_df)
+    visit_counts = calculate_visit_counts(combined_df)
+    avg_arrival_hours = calculate_average_arrival_hour(combined_df)
+
+    print(f"Analysis completed in {time.time() - step_start_time:.2f} seconds")
+
+    # Print summary statistics
+    print("\n=== ATTENDANCE SUMMARY ===")
+    days_summary = (
+        attendance_table[["employee_name", "days_attended"]]
+        .drop_duplicates()
+        .sort_values("days_attended", ascending=False)
+    )
+    print("\nTotal days attended by employee (top 10):")
+    print(days_summary.head(10))
+
+    print("\nAverage arrival hours (top 10):")
+    print(avg_arrival_hours.head(10))
+
+    # STEP 7: Save all results
+    print("\nSTEP 7: Saving results...")
+    step_start_time = time.time()
+    
+    # Determine a suffix for the output files based on date range
+    if start_date and end_date:
+        suffix = f"{start_date}_to_{end_date}"
+    elif last_n_days:
+        suffix = f"last_{last_n_days}_days"
+    else:
+        suffix = "all_data"
+    
+    # Save combined data with the suffix
+    combined_df.to_parquet(f"data/processed/combined_data_{suffix}.parquet", index=False)
+    
+    # Save analysis results with the suffix
+    attendance_table.to_csv(f"data/processed/attendance_table_{suffix}.csv", index=False)
+    visit_counts.to_csv(f"data/processed/visit_counts_{suffix}.csv", index=False)
+    avg_arrival_hours.to_csv(f"data/processed/avg_arrival_hours_{suffix}.csv", index=False)
+    days_summary.to_csv(f"data/processed/days_summary_{suffix}.csv", index=False)
+
+    print(f"Results saved in {time.time() - step_start_time:.2f} seconds")
+    print(f"\nAll data has been saved to the data/processed directory with suffix '{suffix}'")
+    print(f"Total processing time: {time.time() - total_start_time:.2f} seconds")
+    print("\nTo view the dashboard, run: streamlit run src/dashboard.py")
+
+if __name__ == "__main__":
+    main()
+
+==== END OF FILE: main.py ====
+
+==== START OF FILE: requirements.txt ====
+pandas==2.0.0
+numpy==1.24.0
+jupyter==1.0.0
+plotly==5.13.0
+streamlit==1.20.0
+pytest==7.3.1
+
+==== END OF FILE: requirements.txt ====
+
+==== START OF FILE: system_prompt.md ====
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+THIS IS A INITIAL PROMPT FOR AN LLM TO GET THEM UP TO SPEED ON THE PROJECT. ALSO USEFUL FOR CURSOR AI AS CONTEXT
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+SYSTEM PROMPT / SUMMARY
+Project Context
+You are assisting with a project to analyze office attendance data. The user has two CSV data sources:
+
+Key card CSV (originally 300,000+ rows) with columns for date/time scans and user identifiers. Over the conversation, it evolved to have columns like employee_id, timestamp, and access_point.
+Employee info CSV (1,200+ rows), containing detailed information about each employee (Employee #, status, hire date, department, etc.), which gets renamed to employee_id for merging.
+The goal is to clean, merge, and analyze these datasets. The user also wants a Streamlit dashboard to visualize attendance trends (visit frequency, arrival times, etc.).
+
+Directory Structure & Python Setup
+
+A recommended repo layout was established, including data/raw/, data/processed/, src/ scripts (data_ingestion.py, data_cleaning.py, data_analysis.py, dashboard.py), plus optional notebooks/ and tests/.
+The user created a virtual environment (with venv) and a requirements.txt specifying libraries (pandas, numpy, streamlit, plotly, etc.).
+Data Handling Steps
+
+Load CSVs: data_ingestion.py has functions like load_key_card_data(...) and load_employee_info(...).
+Cleaning:
+Key card data needed to parse date/time columns (day-first) and extract numeric IDs from strings (like "761 Clark Hemmings, Andre"). Rows without a valid numeric ID (e.g., cleaners) are dropped.
+Employee info needed "Employee #" renamed to employee_id.
+Merging: A function merges both DataFrames on employee_id.
+Analysis: Simple functions in data_analysis.py calculate attendance stats (visit counts, average arrival hour).
+Dashboard: A basic Streamlit app (dashboard.py) loads the data, cleans it, merges it, and shows tables/charts.
+Key Issues Encountered & Their Solutions
+
+ModuleNotFoundError: The user hadn't installed pandas in the correct environment or had a malformed requirements.txt. Solution: ensure the correct environment is activated and the requirements.txt is correct.
+Column mismatch (KeyError: 'Date/time'): The key card CSV actually had a column named "timestamp" instead of "Date/time". The solution was to match code references to the actual headers (or rename the CSV header).
+Small Test File Instead of Real 100k Rows: The user saw only 100 rows and IDs like 1, 2, 3..., instead of 3-digit IDs. It turned out the CSV might be a test snippet, not the real data. The solution is to confirm the real file (with ~100k rows) is placed in data/raw/ and that the correct path is used.
+NaNs after Merge: Some employee IDs in the key card data do not appear in the employee info CSV. Rows with missing matches lead to NaN values for employee info columns. If desired, an inner join or filtering out invalid IDs can remove those unmatched rows.
+Important Instruction for the LLM
+In any further conversation about this project:
+
+Ask clarifying questions or request to see code/config files whenever something is ambiguous, especially if column names, file paths, or data shapes aren't confirmed.
+Do not rush to provide partial solutions based on assumptions—always confirm details if they are missing or unclear.
+End of Summary
+
+The key card data is only for the London office. However, all employees might scan in (e.g. employees from other offices might be visiting London).
+Further, 
+
+ADDENDUM: ADDITIONAL PROJECT CONTEXT
+Employee Data Transformations
+The project now incorporates several derived fields from employee data that are critical for accurate attendance analysis:
+
+Status v2: Distinguishes between active employees, inactive employees, and upcoming hires
+Combined hire date: Uses Original Hire Date when available, otherwise Hire Date
+Most recent day worked: For inactive employees, uses Employment Status Date; for active employees, uses today's date
+Tenure: Calculates employment duration based on hire and departure dates
+Location group: Maps detailed office locations to broader categories (London, Kent, US, Other)
+Ops or non-ops: Binary categorization of divisions
+Year flags (2014-2025): Tracks which employees were active in each calendar year
+
+Attendance Analysis Requirements
+The attendance analysis has specific business requirements:
+
+Focus on London+Hybrid employees: Primary attendance metrics target employees who are both:
+
+London-based (Location = "London UK")
+Hybrid workers (Working Status = "Hybrid")
+
+
+Dynamic denominators for percentages: When calculating attendance percentages:
+
+Must account for changing employee counts over time
+Only include employees who were actually employed on a given date (between Combined hire date and Most recent day worked)
+Different calculations needed for different time periods (weekday splits, division-specific metrics)
+
+
+Dashboard structure: The dashboard should include:
+
+Overview: Daily/weekly attendance percentages, weekday counts, division breakdowns
+Daily view: Current-day attendance with London+Hybrid vs Other categories
+Individual metrics: Per-employee stats with separate tracking for Mon/Fri vs Tues-Thurs attendance
+
+
+Data segmentation needs: Analysis requires:
+
+Monday/Friday vs Tuesday-Thursday comparison
+Operation vs non-operations divisions
+Location-based grouping
+Tenure-based analysis
+
+
+
+Technical Implementation Notes
+
+Enhanced clean_employee_info() function in data_cleaning.py now handles all employee data transformations
+New analysis functions in data_analysis.py implement the business logic for attendance calculations
+Dashboard (dashboard.py) needs to display metrics with both raw numbers and percentage views where appropriate
+All percentage calculations must use the appropriate dynamic denominator methods
+
+The focus of the project has shifted from basic attendance tracking to sophisticated workforce analytics that account for employee lifecycle changes and provide accurate metrics for hybrid work attendance patterns.
+
+ADDENDUM: PROJECT EVOLUTION AND IMPLEMENTATION DETAILS
+Key Data Processing Insights
+Key Card Data Cleaning
+
+Custom ID Extraction: The original regex for extracting employee IDs wasn't capturing all formats. Implemented improved extraction with custom mappings for special cases like "Payne, James" (ID 735) and "Arorra, Aakash" (ID 378).
+Data Type Consistency: Must ensure employee_id is consistently treated as a numeric type throughout processing to avoid merge issues.
+Entrance Location Analysis: The "Where" column provides valuable information about which entrances employees use, potentially useful for building usage analysis.
+
+Employee Information Processing
+
+Employment Period Calculation: Critical to accurately determine when employees were active for correct attendance percentage calculations:
+
+Use Combined hire date 
+For departed employees, use Most recent day worked from Employment Status Date
+Only count employees in denominators when they were actually employed
+
+
+Employee Status Filtering: Need to distinguish active, inactive, and future employees when calculating metrics
+
+Data Merging Challenges
+
+ID Format Mismatches: Employee IDs sometimes have different types/formats between datasets (string vs float)
+Analysis Implementation
+Attendance Calculations
+
+Present/Absent Logic: An employee is considered "present" if they have at least one scan on a given day
+London+Hybrid Employees: Primary focus group defined by Location == "London UK" & Working Status == "Hybrid"
+Dynamic Denominators: When calculating percentages, only include employees who were actually employed on a specific date (between Combined hire date and Most recent day worked)
+Tue-Thu vs Mon/Fri Analysis: Created separate metrics for Tuesday-Thursday (core office days) vs Monday/Friday
+First Entry Time Analysis: Extract earliest scan time per day per employee for arrival time analysis
+
+Period-Based Metrics
+
+Daily Metrics: Track attendance for each calendar day, with separate counts for London+Hybrid and other employees
+Weekly Aggregation: Group data by week (starting Mondays) for trend analysis
+Custom Period Summaries: Calculate metrics for specific timeframes (last 30 days, last 90 days)
+Weekday Patterns: Analyze attendance by day of week to reveal weekly patterns
+
+Dashboard Enhancements
+Interface Improvements
+
+Multi-tab Design: Organized content into logical sections (Overview Summary, Daily, Weekly, and Employee Details)
+Date Range Filtering: Added sidebar date selectors that filter all visualizations and tables simultaneously
+Quick Date Presets: Added buttons for common time periods (last 30 days, last 90 days)
+
+Visualization Types
+
+Line Charts: For attendance percentage trends over time
+Stacked Bar Charts: For comparing London+Hybrid vs other employee attendance
+Dual-Axis Charts: Combining raw counts (bars) with percentages (line) for context
+Detailed Tables: For specific metrics and individual employee analytics
+Interactive Elements: Allow users to explore data through filters and toggles
+
+Performance Considerations
+
+Calculated Metrics: Some analyses (like employee summary) should be recomputed when date filters change
+Debug Information: Added detailed validation output to verify data processing correctness
+Error Handling: Added appropriate error messages when data is unavailable for selected date ranges
+
+Technical Implementation Lessons
+Data Processing
+
+Workflow Organization: Clear separation between loading, cleaning, merging, and analysis functions
+Function Naming: Descriptive names that indicate what each analysis does (e.g., calculate_daily_attendance_percentage)
+Consistent DataFrame Handling: Copy DataFrames before modifying them to avoid unexpected changes
+Date Handling: Consistent use of pandas datetime objects throughout the pipeline
+
+Code Structure
+
+Manual Corrections: Added capability to handle edge cases and data anomalies
+Debugging Output: Strategic print statements to validate data transformations
+Error Handling: Added try/except blocks to provide meaningful error messages
+Function Documentation: Clear docstrings explaining purpose, parameters, and return values
+
+Streamlit Dashboard
+
+State Management: Preserving selected date ranges across tab changes
+Consistent Formatting: Using the same column naming conventions in display tables
+Component Organization: Logical grouping of related visualizations and controls
+User Experience: Informative labels, titles, and tooltips for all visualizations
+
+Future Enhancement Opportunities
+
+Division Analysis: Deeper comparison of attendance patterns across different divisions
+Building Usage Patterns: Analysis of entrance usage and flow through the building
+Tenure-based Segmentation: Compare attendance patterns by employee tenure
+API Interface: Created FastAPI endpoints for programmatic access to attendance data
+Advanced Time Period Analysis: Seasonality detection, holiday impact, and trends over time
+Mobile Optimization: Ensuring dashboard works well on various screen sizes
+
+This implementation offers a comprehensive view of office attendance patterns while accounting for the complexities of hybrid work arrangements and changing employee lifecycles.
+==== END OF FILE: system_prompt.md ====
+
+==== START OF FILE: tests/test_data_cleaning.py ====
+# test_data_cleaning.py
+# Add your code here
+
+==== END OF FILE: tests/test_data_cleaning.py ====
+
+==== START OF FILE: data/processed/attendance_table.csv ====
+employee_id,employee_name,date_only,visits,present,days_attended
+562.0,"Adegboye, Joy",2024-08-07,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-08,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-09,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-12,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-13,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-14,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-15,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-16,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-19,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-20,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-21,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-22,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-23,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-27,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-28,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-29,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-08-30,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-02,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-03,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-04,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-05,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-06,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-09,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-10,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-11,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-12,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-13,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-16,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-17,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-18,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-19,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-20,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-22,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-23,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-24,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-25,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-26,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-27,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-09-30,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-01,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-02,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-03,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-04,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-07,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-08,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-09,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-10,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-11,0.0,No,1.0
+562.0,"Adegboye, Joy",2024-10-12,0.0,No,1.0
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/processed/attendance_table.csv ====
+
+==== START OF FILE: data/processed/avg_arrival_hours.csv ====
+employee_id,arrival_hour
+103.0,10.82
+104.0,10.4
+105.0,8.71
+106.0,9.07
+107.0,12.5
+108.0,10.0
+110.0,9.36
+112.0,10.0
+113.0,9.39
+114.0,9.49
+115.0,9.74
+118.0,12.0
+119.0,8.65
+120.0,8.43
+121.0,11.5
+122.0,8.37
+123.0,8.17
+126.0,8.71
+128.0,10.29
+129.0,12.33
+130.0,9.26
+131.0,9.9
+132.0,10.45
+133.0,8.11
+134.0,10.47
+136.0,9.2
+137.0,7.95
+139.0,11.25
+140.0,8.33
+141.0,10.76
+143.0,9.18
+144.0,9.0
+145.0,9.41
+147.0,8.34
+148.0,9.44
+151.0,9.5
+152.0,10.09
+153.0,8.41
+155.0,7.11
+156.0,9.13
+158.0,9.16
+159.0,10.59
+160.0,9.39
+162.0,9.0
+163.0,10.88
+165.0,7.27
+166.0,9.4
+167.0,8.93
+175.0,9.33
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/processed/avg_arrival_hours.csv ====
+
+==== START OF FILE: data/processed/combined_data.csv ====
+timestamp,employee_id,User,date_only,day_of_week,time_only,earliest_scan_time,"Last name, First name",Status,Gender,Hire Date,Original Hire Date,Resignation Date,Working Status,Level,Employment Status: Date,Employment Status,FTE,Location,Division,Department,Job Title,Reporting to
+2024-08-07 17:34:23,362,"362 Whitehead, Tom",2024-08-07,Wednesday,17:34:23,17:34:23,"Whitehead, Tom",Active,Male,20/09/2022,,,Hybrid,,20/09/2022,Full-Time,,London UK,Credit and Data,Credit & Collections,Senior Analyst,Calum Thompson
+2024-08-07 17:35:39,364,"364 Keijzer, Tom",2024-08-07,Wednesday,17:35:39,17:35:39,"Keijzer, Tom",Active,Male,04/10/2022,,,Hybrid,,04/10/2022,Full-Time,,London UK,Credit and Data,Cards US,Senior Analyst,Mark Rosel
+2024-08-07 17:35:49,288,"288 Snell, John",2024-08-07,Wednesday,17:35:49,17:35:49,"Snell, John",Inactive,Male,01/03/2022,,,Hybrid,,21/01/2025,Terminated,,London UK,Finance,Finance,Senior Accountant,Tiffany Victoria
+2024-08-07 17:35:57,610,"610 Ike, Chinyere",2024-08-07,Wednesday,17:35:57,17:35:57,"Ike, Chinyere",Active,Female,15/11/2023,,,Hybrid,,03/06/2024,Full-Time,,London UK,Operations,Complaints,Complaints Officer,Tom Earley
+2024-08-07 17:38:39,261,"261 Claudet, Christopher",2024-08-07,Wednesday,17:38:39,17:38:39,"Claudet, Christopher",Active,Male,11/01/2022,,,Remote,,11/01/2022,Full-Time,,London UK,Product,SuperApp,Senior Product Designer,Giulia Fabritius
+2024-08-07 17:40:14,757,"757 Amicone, Floriana",2024-08-07,Wednesday,17:40:14,17:40:14,"Amicone, Floriana",Active,Female,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,London UK,Credit and Data,Data Science,Data Scientist,Oliver Cairns
+2024-08-07 17:40:19,397,"397 Gordon, Richard",2024-08-07,Wednesday,17:40:19,17:40:19,"Gordon, Richard",Active,Male,14/02/2023,,,Hybrid,,14/02/2023,Full-Time,,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards & Loans,Christian Porter
+2024-08-07 17:40:20,310,"310 Davies, Thomas",2024-08-07,Wednesday,17:40:20,17:40:20,"Davies, Thomas",Active,Male,24/05/2022,,,Hybrid,,24/05/2022,Full-Time,,London UK,Product,SuperApp,Senior Product Manager,Giulia Fabritius
+2024-08-07 17:40:55,304,"304 Fielding, Adam",2024-08-07,Wednesday,17:40:55,17:40:55,"Fielding, Adam",Active,Male,17/05/2022,,,Hybrid,IC3,29/07/2024,Full-Time,,London UK,Engineering,SuperApp,Senior Software Engineer,Nick Hannaway
+2024-08-07 17:41:08,677,"677 Pratapa, Vamsi",2024-08-07,Wednesday,17:41:08,17:41:08,"Pratapa, Vamsi",Active,Male,12/03/2024,,,Hybrid,,12/03/2024,Full-Time,,London UK,Credit and Data,Operations Analytics,Graduate Analyst,Aakash Arora
+2024-08-07 17:42:23,362,"362 Whitehead, Tom",2024-08-07,Wednesday,17:42:23,17:34:23,"Whitehead, Tom",Active,Male,20/09/2022,,,Hybrid,,20/09/2022,Full-Time,,London UK,Credit and Data,Credit & Collections,Senior Analyst,Calum Thompson
+2024-08-07 17:42:48,745,"745 Leung, Joshua",2024-08-07,Wednesday,17:42:48,17:42:48,"Leung, Joshua",Active,Male,25/06/2024,,,Hybrid,IC3,29/07/2024,Full-Time,,London UK,Engineering,Cards UK,Senior React Native Engineer,Phillip Brown
+2024-08-07 17:43:31,195,"195 Thompson, Calum",2024-08-07,Wednesday,17:43:31,17:43:31,"Thompson, Calum",Active,Male,14/06/2021,,,Hybrid,,14/06/2021,Full-Time,,London UK,Credit and Data,Credit & Collections,"Credit Risk Manager, Cards",Charles Denby
+2024-08-07 17:43:52,790,"790 Chippendale, Julie",2024-08-07,Wednesday,17:43:52,17:43:52,"Chippendale, Julie",Active,Female,30/07/2024,,,Hybrid,,30/07/2024,Short-term Contractor,,London UK,Operations,Collections Strategy,Collections and Recoveries Consultant,Darren Carlile
+2024-08-07 17:44:15,736,"736 Jameson, Dominnic",2024-08-07,Wednesday,17:44:15,17:44:15,"Jameson, Dominic",Active,Male,18/06/2024,,,Hybrid,,18/06/2024,Full-Time,,London UK,Capital Markets,Capital Markets,COO - Lendable Capital,Rory McHugh
+2024-08-07 17:44:21,151,"151 Markland, Hugo",2024-08-07,Wednesday,17:44:21,17:44:21,"Markland, Hugo",Inactive,Male,09/12/2019,,,Hybrid,,23/10/2024,Terminated,,London UK,Capital Markets,Capital Markets,Director Capital Markets,Rory McHugh
+2024-08-07 17:46:06,365,"365 Barratt-Johnson, Oliver",2024-08-07,Wednesday,17:46:06,17:46:06,"Barratt-Johnson, Oliver",Inactive,Male,04/10/2022,,19/12/2024,Hybrid,,28/01/2025,Terminated,,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Calum Thompson
+2024-08-07 17:48:27,259,"259 Ushanov, Mingiyan",2024-08-07,Wednesday,17:48:27,17:48:27,"Ushanov, Mingiyan",Active,Male,04/01/2022,,,Hybrid,,04/01/2022,Full-Time,,London UK,Growth,Growth,Senior Growth Analyst,Christopher Meurice
+2024-08-07 17:48:30,264,"264 Anselmetti, Pietro",2024-08-07,Wednesday,17:48:30,17:48:30,"Anselmetti, Pietro",Active,Male,18/01/2022,,,Hybrid,,18/01/2022,Full-Time,,London UK,Growth,Growth,Senior UK Partnership Manager,Christopher Meurice
+2024-08-07 17:50:09,317,"317 Soufla, Eirini",2024-08-07,Wednesday,17:50:09,17:50:09,"Soufla, Eirini",Active,Female,14/06/2022,,,Hybrid,,14/06/2022,Full-Time,,London UK,Operations,Customer Operations UK,Customer Operations Team Lead - Zable,Krishna Bhura
+2024-08-07 17:50:18,343,"343 Wong, Christine",2024-08-07,Wednesday,17:50:18,17:50:18,"Wong, Christine",Active,Female,23/08/2022,,,Hybrid,,23/08/2022,Full-Time,,London UK,Operations,Collections (Ops) UK,Specialist Operations Agent,Steff Passon
+2024-08-07 17:52:12,259,"259 Ushanov, Mingiyan",2024-08-07,Wednesday,17:52:12,17:48:27,"Ushanov, Mingiyan",Active,Male,04/01/2022,,,Hybrid,,04/01/2022,Full-Time,,London UK,Growth,Growth,Senior Growth Analyst,Christopher Meurice
+2024-08-07 17:52:55,515,"515 Chan, Martin",2024-08-07,Wednesday,17:52:55,17:52:55,"Chan, Martin",Active,Male,15/08/2023,,,Hybrid,,15/08/2023,Full-Time,,London UK,CEO Office,CEO Office,VP Strategy & Corporate Development,Martin Kissinger
+2024-08-07 17:53:17,304,"304 Fielding, Adam",2024-08-07,Wednesday,17:53:17,17:40:55,"Fielding, Adam",Active,Male,17/05/2022,,,Hybrid,IC3,29/07/2024,Full-Time,,London UK,Engineering,SuperApp,Senior Software Engineer,Nick Hannaway
+2024-08-07 17:54:32,156,"156 White, James",2024-08-07,Wednesday,17:54:32,17:54:32,"White, James",Active,Male,10/02/2020,,,Hybrid,,10/02/2020,Full-Time,,London UK,Senior Management,Cards UK,"Managing Director, Cards UK",Martin Kissinger
+2024-08-07 17:54:34,103,"103 Challis, Ben",2024-08-07,Wednesday,17:54:34,17:54:34,"Challis, Ben",Active,Male,08/06/2016,,,Hybrid,IC6,29/07/2024,Full-Time,,London UK,Engineering,Architecture,Chief Architect,James Caviness
+2024-08-07 17:56:41,206,"206 Price, Matthew",2024-08-07,Wednesday,17:56:41,17:56:41,"Price, Matthew",Active,Male,19/07/2021,,,Hybrid,,19/07/2021,Full-Time,,London UK,Finance,Finance,Financial Operations Manager,Adam White
+2024-08-07 17:58:38,661,"661 Murphy, David",2024-08-07,Wednesday,17:58:38,17:58:38,"Murphy, David",Active,Male,30/01/2024,,,Hybrid,IC4,29/07/2024,Full-Time,,London UK,Engineering,SuperApp,Tech Lead,Katherine Spice
+2024-08-07 18:01:24,348,"348 Sampong, Emmanuel",2024-08-07,Wednesday,18:01:24,18:01:24,"Sampong, Emmanuel",Active,Male,06/09/2022,,,Hybrid,,06/09/2022,Full-Time,,London UK,Operations,QA,QA Agent,Scott Hick
+2024-08-07 18:02:03,143,"143 Angopa, Bernard",2024-08-07,Wednesday,18:02:03,18:02:03,"Angopa, Bernard",Active,Male,08/07/2019,,,Hybrid,,08/07/2019,Full-Time,,London UK,Legal,Legal,General Counsel,Rory McHugh
+2024-08-07 18:03:36,761,"761 Clarke-Hemmings, Andre",2024-08-07,Wednesday,18:03:36,18:03:36,"Clarke-Hemmings, Andre",Active,Male,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards,Christian Porter
+2024-08-07 18:04:12,106,"106 van Strydonck, Livia",2024-08-07,Wednesday,18:04:12,18:04:12,"van Strydonck, Livia",Active,Female,06/02/2017,,,Hybrid,,06/02/2017,Full-Time,,London UK,CEO Office,CEO Office,Chief of Staff,Martin Kissinger
+2024-08-07 18:04:45,122,"122 Meurice, Christopher",2024-08-07,Wednesday,18:04:45,18:04:45,"Meurice, Christopher",Active,Male,18/09/2017,,,Hybrid,,18/09/2017,Full-Time,,London UK,Senior Management,Growth,Chief Marketing Officer,Martin Kissinger
+2024-08-07 18:05:43,721,"721 Rahman, Rashidur",2024-08-07,Wednesday,18:05:43,18:05:43,"Rahman, Rashidur",Active,Male,04/06/2024,,,Hybrid,,04/06/2024,Full-Time,,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards,Christian Porter
+2024-08-07 18:06:15,686,"686 Steele, Madeleine",2024-08-07,Wednesday,18:06:15,18:06:15,"Steele, Madeleine",Active,Female,09/04/2024,,24/09/2024,Hybrid,,09/04/2024,Full-Time,,London UK,Compliance - UK,Compliance - UK,Compliance Monitoring Officer,Michelle Sharpley
+2024-08-07 18:06:43,397,"397 Gordon, Richard",2024-08-07,Wednesday,18:06:43,17:40:19,"Gordon, Richard",Active,Male,14/02/2023,,,Hybrid,,14/02/2023,Full-Time,,London UK,Operations,Collections (Ops) UK,Collections Agent - Cards & Loans,Christian Porter
+2024-08-07 18:06:45,126,"126 McGuire, Conor",2024-08-07,Wednesday,18:06:45,18:06:45,"McGuire, Conor",Active,Male,09/07/2018,,,Hybrid,,09/07/2018,Full-Time,,London UK,Senior Management,Compliance - UK,Head of Compliance,Martin Kissinger
+2024-08-07 18:14:46,133,"133 White, Adam",2024-08-07,Wednesday,18:14:46,18:14:46,"White, Adam",Active,Male,07/01/2019,,,Hybrid,,07/01/2019,Full-Time,,London UK,Senior Management,Finance,"VP, Finance",Peter Golby
+2024-08-07 18:20:58,365,"365 Barratt-Johnson, Oliver",2024-08-07,Wednesday,18:20:58,17:46:06,"Barratt-Johnson, Oliver",Inactive,Male,04/10/2022,,19/12/2024,Hybrid,,28/01/2025,Terminated,,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Calum Thompson
+2024-08-07 18:21:47,310,"310 Davies, Thomas",2024-08-07,Wednesday,18:21:47,17:40:20,"Davies, Thomas",Active,Male,24/05/2022,,,Hybrid,,24/05/2022,Full-Time,,London UK,Product,SuperApp,Senior Product Manager,Giulia Fabritius
+2024-08-07 18:23:52,365,"365 Barratt-Johnson, Oliver",2024-08-07,Wednesday,18:23:52,17:46:06,"Barratt-Johnson, Oliver",Inactive,Male,04/10/2022,,19/12/2024,Hybrid,,28/01/2025,Terminated,,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Calum Thompson
+2024-08-07 18:26:34,319,"319 Prasad, Arnav",2024-08-07,Wednesday,18:26:34,18:26:34,"Prasad, Arnav",Active,Male,21/06/2022,,,Hybrid,,21/06/2022,Full-Time,,London UK,Credit and Data,Data Science,Data Science Manager,Kristian McCaul
+2024-08-07 18:27:43,310,"310 Davies, Thomas",2024-08-07,Wednesday,18:27:43,17:40:20,"Davies, Thomas",Active,Male,24/05/2022,,,Hybrid,,24/05/2022,Full-Time,,London UK,Product,SuperApp,Senior Product Manager,Giulia Fabritius
+2024-08-07 18:32:36,319,"319 Prasad, Arnav",2024-08-07,Wednesday,18:32:36,18:26:34,"Prasad, Arnav",Active,Male,21/06/2022,,,Hybrid,,21/06/2022,Full-Time,,London UK,Credit and Data,Data Science,Data Science Manager,Kristian McCaul
+2024-08-07 18:42:23,103,"103 Challis, Ben",2024-08-07,Wednesday,18:42:23,17:54:34,"Challis, Ben",Active,Male,08/06/2016,,,Hybrid,IC6,29/07/2024,Full-Time,,London UK,Engineering,Architecture,Chief Architect,James Caviness
+2024-08-07 18:47:46,537,"537 Kozulin, Aleksandr",2024-08-07,Wednesday,18:47:46,18:47:46,"Kozulin, Aleksandr",Active,Male,19/09/2023,,,Hybrid,,19/09/2023,Full-Time,,London UK,Credit and Data,Credit & Collections,Senior Credit Analyst,Steven Cochrane
+2024-08-07 19:12:48,288,"288 Snell, John",2024-08-07,Wednesday,19:12:48,17:35:49,"Snell, John",Inactive,Male,01/03/2022,,,Hybrid,,21/01/2025,Terminated,,London UK,Finance,Finance,Senior Accountant,Tiffany Victoria
+2024-08-07 19:15:26,288,"288 Snell, John",2024-08-07,Wednesday,19:15:26,17:35:49,"Snell, John",Inactive,Male,01/03/2022,,,Hybrid,,21/01/2025,Terminated,,London UK,Finance,Finance,Senior Accountant,Tiffany Victoria
+2024-08-07 19:52:03,488,"488 de Grande, Esther",2024-08-07,Wednesday,19:52:03,19:52:03,"de Grande, Esther",Active,Female,27/06/2023,,,Hybrid,,27/06/2023,Full-Time,,London UK,People,People Operations,People & Talent Coordinator,Charlotte Mutsaerts
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/processed/combined_data.csv ====
+
+==== START OF FILE: data/processed/days_summary.csv ====
+date,total_eligible,total_present,percentage
+2024-08-07,264,36,13.6
+2024-08-08,264,164,62.1
+2024-08-09,263,21,8.0
+2024-08-12,263,18,6.8
+2024-08-13,263,185,70.3
+2024-08-14,263,179,68.1
+2024-08-15,263,169,64.3
+2024-08-16,261,10,3.8
+2024-08-19,261,19,7.3
+2024-08-20,260,181,69.6
+2024-08-21,259,175,67.6
+2024-08-22,259,163,62.9
+2024-08-23,259,13,5.0
+2024-08-27,263,140,53.2
+2024-08-28,263,126,47.9
+2024-08-29,262,134,51.1
+2024-08-30,262,11,4.2
+2024-09-02,262,15,5.7
+2024-09-03,264,180,68.2
+2024-09-04,264,165,62.5
+2024-09-05,264,170,64.4
+2024-09-06,264,14,5.3
+2024-09-09,264,16,6.1
+2024-09-10,264,180,68.2
+2024-09-11,264,177,67.0
+2024-09-12,264,175,66.3
+2024-09-13,264,11,4.2
+2024-09-16,264,19,7.2
+2024-09-17,265,199,75.1
+2024-09-18,265,190,71.7
+2024-09-19,265,177,66.8
+2024-09-20,265,40,15.1
+2024-09-22,265,4,1.5
+2024-09-23,265,14,5.3
+2024-09-24,266,194,72.9
+2024-09-25,265,188,70.9
+2024-09-26,265,190,71.7
+2024-09-27,265,12,4.5
+2024-09-30,265,13,4.9
+2024-10-01,267,203,76.0
+2024-10-02,267,192,71.9
+2024-10-03,267,192,71.9
+2024-10-04,267,16,6.0
+2024-10-07,267,14,5.2
+2024-10-08,269,204,75.8
+2024-10-09,269,199,74.0
+2024-10-10,269,191,71.0
+2024-10-11,269,15,5.6
+2024-10-12,269,1,0.4
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/processed/days_summary.csv ====
+
+==== START OF FILE: data/processed/visit_counts.csv ====
+employee_id,visit_count
+103,371
+104,21
+105,174
+106,692
+107,11
+108,300
+110,420
+112,6
+113,232
+114,223
+115,78
+118,3
+119,574
+120,519
+121,98
+122,524
+123,483
+126,658
+128,237
+129,7
+130,325
+131,187
+132,221
+133,413
+134,176
+136,710
+137,249
+139,18
+140,193
+141,433
+143,493
+144,55
+145,91
+147,459
+148,47
+151,194
+152,379
+153,129
+155,258
+156,347
+158,409
+159,298
+160,221
+162,9
+163,31
+165,387
+166,15
+167,168
+175,141
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/processed/visit_counts.csv ====
+
+==== START OF FILE: data/raw/employee_info.csv ====
+﻿"Last name, First name","Employee #",Status,Gender,College/Institution,"Hire Date","Original Hire Date","Resignation Date","Working Status",Level,"Employment Status: Date","Employment Status",FTE,"Termination Type","Termination Reason","Eligible For Re-hire","Regrettable or Non-Regrettable","Employment status comments","Compensation: Date","Pay Schedule","Pay type","Pay rate","Pay rate - Currency code","Paid per","Overtime Status","Overtime Rate","Job Information: Date",Location,Division,Department,"Job Title","Reporting to",Entity,"Sick Leave Time taken (YTD)","Sick Leave Time accrued","Compassionate Leave Time accrued","Bereavement Leave Time accrued","Parental Leave Time accrued","Parental Leave Time taken (YTD)","Learning and Development Time taken (YTD)","Bereavement Leave Time taken (YTD)","Compassionate Leave Time taken (YTD)","Days in Lieu Time taken (YTD)","Work from Home Time taken (YTD)","SSP Sick Leave Time taken (YTD)","Unpaid Sick Leave Time taken (YTD)","OT - Intermediate Rate (Ops) Time taken (YTD)"
+"Abdul, Alisha",717,Inactive,Female,,28/05/2024,,,Hybrid,,20/08/2024,Terminated,,,"End of contract",,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Abidoye, Olawale",395,Inactive,Male,,07/02/2023,,,Hybrid,,03/08/2023,Terminated,,"Resignation (Voluntary)",Relocation,Yes,Regrettable,"Moving to Jamaica for a new role. 
+Resigned on 21st of July (2 weeks' notice in agreement with Krishna).",,,,,,,,,18/07/2023,"London UK",Operations,"Collections (Ops) UK","Collections Agent","Imren Iliyaz","Lendable UK",0.00,2.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Abraham, Daniel",716,Inactive,Male,,12/08/2024,28/05/2024,,Hybrid,,19/11/2024,Terminated,,"Termination (Involuntary)",Performance,No,,,30/09/2024,,Salary,0.01,GBP,Month,Exempt,,05/08/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",0.00,3.50,10.00,20.00,20.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adegboye, Joy",562,Active,Female,,17/10/2023,,,Hybrid,,17/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,17/10/2023,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",1.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adèle, Amelia",236,Active,Female,,16/11/2021,,,Hybrid,,16/11/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Financial Crime Risk Manager","Scott Andrews","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeleye, Jadesola",587,Active,Female,,07/11/2023,,,Hybrid,,07/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards & Loans","Kimberley Radmore","Lendable UK",1.00,8.00,5.00,10.00,154.00,0.00,0.00,3.00,0.00,1.00,5.00,0.00,0.00,0.00
+"Ademiec, Radek",434,Active,Male,,18/04/2023,,,Remote,IC3,29/07/2024,"Long-term Contractor",,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,29/07/2024,Poland,Engineering,"Cards US","Senior Software Engineer","Arkadiusz Kondas","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adenekan, Taiwo",462,Inactive,Female,,30/05/2023,,,Hybrid,,29/08/2024,Terminated,,"Resignation (Voluntary)",Performance,"Upon review",Non-Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,10/05/2024,"London UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Christian Porter","Lendable UK",0.00,7.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeniji, Hannah",333,Inactive,Female,,02/08/2022,,10/05/2024,Hybrid,,30/05/2024,Terminated,,"Resignation (Voluntary)",Role,"Upon review",Non-Regrettable,,,,,,,,,,10/05/2024,"London UK",Operations,"Collections (Ops) UK","Collections Agent - Loans & Auto","Christian Porter","Lendable UK",0.00,2.55,4.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adewole, Zacchaeus",428,Inactive,Male,,11/04/2023,,,Hybrid,,22/08/2023,Terminated,,"Termination (Involuntary)",Performance,No,,"Failed QA 2 months in a row + concerns about behavioral issues. Decided to end his contract. One month notice ",,,,,,,,,12/05/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Tom Earley","Lendable UK",0.00,8.00,10.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeyemi, Nicole",709,Inactive,Female,,14/05/2024,,31/07/2024,Hybrid,,31/07/2024,Terminated,,"Resignation (Voluntary)",Role,No,Non-Regrettable,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Eirini Soufla","Lendable UK",0.00,2.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adeyemo, Fawaz",670,Active,Male,,06/03/2024,,,Hybrid,,06/03/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,10/02/2025,"London UK",Operations,"Customer Operations US","Customer Operations Agent - Zable US","Werda Hersi","Lendable UK",0.63,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Adjei-Ampofo, Javan",936,Active,Male,,18/02/2025,,,Hybrid,,18/02/2025,Full-Time,,,,,,,,,,,,,,,18/02/2025,"Kent UK",Operations,"Customer Operations UK","Collections Agent - Loans","Christian Porter","Lendable UK",0.00,6.95,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adjei, Chante",489,Inactive,Female,,27/06/2023,,,Hybrid,,27/09/2023,Terminated,,"Termination (Involuntary)",,,,,,,,,,,,,27/06/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","Jasmine Aminpour","Lendable UK",0.00,3.00,10.00,10.00,260.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Adofo, Johnson",755,Active,Male,,26/08/2024,,,Hybrid,,26/08/2024,Full-Time,,,,,,,27/08/2024,,Salary,0.01,GBP,Month,Exempt,,30/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Kelly Smith","Lendable UK",0.82,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,1.00,2.00,0.00,0.00,0.00
+"Afagwu-Odunowo, HappyPrincess",640,Active,Female,,05/12/2023,,,Hybrid,,05/12/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,07/03/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Charlotte Harris","Lendable UK",0.00,8.00,5.00,8.00,154.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
+"Afodunrinbi, Yetunde",864,Active,Female,,03/12/2024,,,Hybrid,,03/12/2024,Full-Time,,,,,,,03/12/2024,,Salary,0.10,GBP,Month,Exempt,,03/12/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Agbaje, David",758,Active,Male,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Cards","Charley Pratt","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00,0.00
+"Agostinho Graça, Herberto",451,Inactive,Male,,22/05/2023,,,Remote,,07/03/2024,Terminated,,"Termination (Involuntary)",Performance,,,,,,,,,,,,01/01/2024,"The Netherlands",Engineering,"Central Platform","Staff Software Engineer","Phillip Brown","Lendable UK",0.00,8.00,5.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Agostinho, Lucelia",436,Inactive,Female,,18/04/2023,,,Hybrid,,13/02/2024,Terminated,,"Resignation (Voluntary)","Career Progression",Yes,,"- Wanted to find a role that had more chance of progression which she doesn't feel she has right now
+- Some challenges with QA, concerned she would not pass her probation
+",,,,,,,,,18/07/2023,"London UK",Operations,"Collections (Ops) UK","Collections Agent","Mandeep Kaur","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Agyemang-Duah, Nana",494,Inactive,Female,,18/07/2023,,02/05/2024,Hybrid,,30/05/2024,Terminated,,"Resignation (Voluntary)","Mental Health","Upon review",Regrettable,,,,,,,,,,20/11/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Eirini Soufla","Lendable UK",0.00,0.69,1.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ahmed, Faiza",731,Active,Female,,11/06/2024,,,Hybrid,,02/12/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,19/11/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ahmed, Sairah",496,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,22/12/2023,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Loans","George Thomas","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,1.00,0.00,0.00,0.00
+"Ahmedi, Amtul Noor",401,Inactive,Female,,28/02/2023,,,Hybrid,,28/03/2024,Terminated,,"Resignation (Voluntary)","Personal reasons",No,Non-Regrettable,"Not aligned with how the business works",,,,,,,,,07/06/2023,"London UK",Operations,Complaints,"Head of Complaints","Claire Moore","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Aileru, Lynnex",590,Active,Male,,08/11/2023,,,Hybrid,,08/11/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,28/10/2024,"Kent UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",1.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00
+"Akatakpo, George",945,Active,Male,,04/03/2025,,,Hybrid,,04/03/2025,Full-Time,,,,,,,,,,,,,,,04/03/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Auto","Jordan Nico","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Akewushola, Mo",909,Active,Male,,15/01/2025,,,Hybrid,,15/01/2025,Temp,,,,,,,16/01/2025,,Salary,0.10,GBP,Month,Exempt,,15/01/2025,"London UK",Operations,"Fraud & FinCrime","Financial Crime Investigator","Alexandra Geca","Lendable UK",0.00,7.69,5.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Akhuemokhan, Esther A",895,Active,Female,,14/01/2025,,,,,14/01/2025,Temp,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata",,0.00,7.72,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Akintokunbo, Modupe",888,Active,Female,,14/01/2025,,,Hybrid,,14/01/2025,Full-Time,,,,,,,14/01/2025,,Salary,0.10,GBP,Month,Exempt,,14/01/2025,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Kimberley Radmore","Lendable UK",10.00,7.72,5.00,10.00,154.00,0.00,0.00,1.00,3.50,0.00,0.00,0.00,0.00,0.00
+"Alam, Rifat",672,Active,Male,,21/05/2024,,,Hybrid,IC2,29/07/2024,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,04/02/2025,"London UK",Engineering,SuperApp,"React Native Software Engineer","Nick Hannaway","Lendable UK",4.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alanna, Montana",700,Inactive,Female,,07/05/2024,,14/05/2024,Hybrid,,14/05/2024,Terminated,,"Resignation (Voluntary)",culture,No,Non-Regrettable,,,,,,,,,,07/05/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Connor Delicata","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alexander, Claire",572,Inactive,,,24/10/2023,,,Hybrid,,01/11/2023,Terminated,,"Resignation (Voluntary)",Other,,,,,,,,,,,,24/10/2023,"London UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Ali, Obaid",367,Inactive,Male,,04/10/2022,,,Hybrid,,29/03/2023,Terminated,,"Termination (Involuntary)",Performance,,,,,,,,,,,,10/10/2022,"London UK",Operations,"Customer Operations UK","Customer Operations Agent - Zable","Tom Earley","Lendable UK",0.00,8.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Allen, Leanne",473,Active,Female,,06/06/2023,,,Hybrid,,06/06/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,06/06/2023,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Team Lead","Daniel Medcalf","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0.00,0.00
+"Allison, Donna",550,Active,Female,,03/10/2023,,,Hybrid,,03/10/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,11/09/2024,"Kent UK",Operations,"Collections (Ops) UK","Specialist Vulnerability Agent - Cards and Loans","Leanne Allen","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,2.00,3.00,0.00,0.00,0.00
+"Allotey, Sharon",691,Inactive,Female,,23/04/2024,,,Hybrid,,06/12/2024,Terminated,,"Termination (Involuntary)",Performance,No,,"mutual agreement",04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,23/04/2024,"London UK",Operations,Complaints,"Complaints Officer","Tom Earley","Lendable UK",0.00,0.00,5.00,10.00,60.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alokolaro, Elizabeth",230,Active,Female,,26/10/2021,,,Remote,,26/10/2021,"Short-term Contractor",,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Financial Crime Specialist","Amelia Adèle","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Alom, Shuayb",962,Active,Male,,04/03/2025,,,Hybrid,,04/03/2025,Temp,,,,,,,,,,,,,,,04/03/2025,"London UK",Operations,Complaints,"Complaints Administrator","Tom Earley","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Amicone, Floriana",757,Active,Female,,09/07/2024,,,Hybrid,,09/07/2024,Full-Time,,,,,,,10/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,09/07/2024,"London UK","Credit and Data","Data Science","Data Scientist","Oliver Cairns","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Aminpour, Jasmine",200,Active,Female,,28/06/2021,,,Hybrid,,28/06/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Compliance Monitoring Officer","Michelle Sharpley","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Amodubello, Sinead",740,Inactive,Female,,18/06/2024,,,Hybrid,,20/08/2024,Terminated,,,"End of contract",,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2024,"Kent UK",Operations,"Customer Operations UK","Customer Operations Agent - Cards & Loans","Connor Delicata","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Anderson, Jake",556,Inactive,Male,,03/10/2023,,,Hybrid,,26/03/2024,Terminated,,"Resignation (Voluntary)","Personal reasons","Upon review",Non-Regrettable,,,,,,,,,,07/03/2024,"Kent UK",Operations,"Collections (Ops) UK","Collections Agent - Loans","Charlotte Harris","Lendable UK",0.00,7.00,2.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Andrade, Nzingha",495,Active,Female,,18/07/2023,,,Hybrid,,18/07/2023,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,01/01/2025,"London UK",Operations,"Fraud & FinCrime","Fraud & Disputes Advisor","Garry Rayment","Lendable UK",0.00,8.00,5.00,10.00,154.00,0.00,0.00,0.00,0.00,0.00,2.00,0.00,0.00,0.00
+"Andrews, Scott",192,Active,Male,,18/05/2021,,,Hybrid,,18/05/2021,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,13/01/2025,"London UK","Compliance - UK","Compliance - UK","Director of Enterprise Risk","Conor McGuire","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Angopa, Bernard",143,Active,Male,,08/07/2019,,,Hybrid,,08/07/2019,Full-Time,,,,,,,04/07/2024,,Salary,0.01,GBP,Month,Non-exempt,0.01,08/07/2019,"London UK",Legal,Legal,"General Counsel","Rory McHugh","Lendable UK",0.00,8.00,5.00,10.00,10.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+"Anguelov, Nikolay",157,Inactive,Male,,17/02/2020,,,Hybrid,,28/02/2022,Terminated,,,Other,,,,,,,,,,,,17/02/2020,"London UK","Credit, Data and FinCrime","Collections & Internal Tools","Software Engineer","William Janse van Rensburg","Lendable UK",0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/employee_info.csv ====
+
+==== START OF FILE: data/raw/key_card_access.csv ====
+Date/time,User,Token number,Where,Event,Details,Department
+25/02/2025 15:07:30,"918 Chrisostomou, Metaxoulla",99946904.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:07:28,"833 Jefferies, Rosie",21542251.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:07:13,"512 Kilian, Michael",41197139.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:06:57,"863 Shaw-Frost, Oli",42175472.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:06:41,"309 Chamberlain, Richard",39194399.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:05:42,"863 Shaw-Frost, Oli",42175472.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:05:19,"787 Evans, Peter",78353339.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:04:54,"734 Carlile, Darren",16604372.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:04:51,"247 Murray, Bethanie",94145226.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:04:35,"906 Ferrabee, Lucy",11614251.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:04:06,"909 Sharaf Akewushola, Mo",46356833.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:03:49,"CHEF Chef, Matos, Angie",73320085.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:03:37,"488 de Grande, Esther",74190211.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:03:08,"609 Channer, Mark",87271512.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:02:21,"304 Fielding, Adam",42824989.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:02:18,"615 Miller, Daniel",55863178.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:02:08,"309 Chamberlain, Richard",39194399.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:02:07,"914 Hussain, Maira",52317029.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:02:03,"167 Wilkinson, Stephen",50575498.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 15:01:56,"393 Davies, Josephine",79864245.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:01:48,"744 Cannon, Laura",56652968.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:01:44,"488 de Grande, Esther",74190211.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:01:33,"195 Thompson, Calum",79853148.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 15:01:12,"787 Evans, Peter",78353339.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 15:00:50,"564 Palsikar, Mitali",71622581.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 15:00:36,"498 Cairns, Oliver",9739965.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:00:26,"136 Erskine, Oliver",97216191.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 15:00:22,"787 Evans, Peter",78353339.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 15:00:09,"232 Loi, Jessica",27858412.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:59:44,"808 Neale, James",46731192.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:59:43,"787 Evans, Peter",78353339.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:59:25,"688 Davies, Stuart",69755068.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 14:58:18,"554 Rogers-Jenkins, Arielle",26426112.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:58:14,"564 Palsikar, Mitali",71622581.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:58:04,"147 Denby, Charles",86141069.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:57:56,"615 Miller, Daniel",55863178.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:57:11,"832 Surridge, Scott",75995296.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:56:55,"282 Mikkelsen, Karen",62865800.0,5th Floor LH Side Entrance  (In),Access permitted - token only,,
+25/02/2025 14:56:48,"668 Stone, William",17200144.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:56:36,"132 Longshaw, Alex",85428928.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:56:20,"849 Hindhaugh, Rob",28807229.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 14:56:11,"859 Webb, George",285846.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:56:02,"176 Grigorescu, Gabriel",68062195.0,Lift Lobby South (In),Access permitted - token only,,
+25/02/2025 14:56:01,"835 Epstein, Ethan",58643657.0,2nd Floor South RH Side (In),Access permitted - token only,,
+25/02/2025 14:55:50,"232 Loi, Jessica",27858412.0,Lift Lobby North (In),Access permitted - token only,,
+25/02/2025 14:55:40,"206 Price, Matthew",54479979.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:55:33,"799 Nevares, Ori",85090692.0,Office Entrance West (In),Access permitted - token only,,
+25/02/2025 14:55:03,"789 Swain, Anthony",50885597.0,2nd Floor South LH Side (In),Access permitted - token only,,
+25/02/2025 14:53:55,"804 Sultoon, Hugh",73745342.0,5th Floor RH Side Entrance  (In),Access permitted - token only,,
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/key_card_access.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/csv_combiner.py ====
+#!/usr/bin/env python3
+import os
+import glob
+import pandas as pd
+
+def combine_csv_files(input_dir, output_file, subset_cols=None):
+    """
+    Combines all CSV files in input_dir into one DataFrame,
+    removes duplicate rows, sorts by date/time (newest first),
+    and saves the result to output_file, preserving the original format.
+    
+    Parameters:
+      - input_dir: str, directory where the CSV files are located.
+      - output_file: str, path to the output CSV file.
+      - subset_cols: list of str, optional. If provided, duplicates will be
+                     dropped based on these columns.
+    """
+    # Find all CSV files in the input directory
+    csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
+    if not csv_files:
+        print(f"No CSV files found in {input_dir}")
+        return
+    
+    # Read each CSV file into a DataFrame
+    df_list = []
+    for file in csv_files:
+        try:
+            df = pd.read_csv(file)
+            df_list.append(df)
+            print(f"Loaded {file} with {len(df)} rows")
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+    
+    # Concatenate all DataFrames
+    combined_df = pd.concat(df_list, ignore_index=True)
+    print(f"\nCombined DataFrame has {len(combined_df)} rows before deduplication.")
+    
+    # Drop duplicates (using all columns or a subset if provided)
+    if subset_cols:
+        combined_df = combined_df.drop_duplicates(subset=subset_cols)
+    else:
+        combined_df = combined_df.drop_duplicates()
+    print(f"Combined DataFrame has {len(combined_df)} rows after deduplication.")
+    
+    # Convert 'Date/time' to datetime for proper sorting
+    # The format matches your data: "31/07/2023 22:48:58"
+    combined_df['datetime_for_sorting'] = pd.to_datetime(combined_df['Date/time'], format="%d/%m/%Y %H:%M:%S")
+    
+    # Sort by Date/time in descending order (newest first)
+    combined_df = combined_df.sort_values(by='datetime_for_sorting', ascending=False)
+    
+    # Remove the temporary sorting column
+    combined_df = combined_df.drop('datetime_for_sorting', axis=1)
+    
+    # Save the combined DataFrame to the output CSV file
+    combined_df.to_csv(output_file, index=False)
+    print(f"\nCombined CSV saved to {output_file}")
+
+if __name__ == "__main__":
+    # Define the input directory (where individual CSV files are stored)
+    # Using absolute path to avoid relative path issues
+    input_directory = "/Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard/data/raw/csv_combiner/input_files"
+    
+    # Define the output CSV path, which is the file your project currently uses.
+    output_csv = "/Users/rob.hindhaugh/Documents/GitHub/Attendance_Dashboard/data/raw/key_card_access.csv"
+    
+    # Optionally define columns to use for deduplication.
+    # For example, if 'Date/time' and 'User' uniquely identify a record:
+    dedupe_subset = ['Date/time', 'User']
+    
+    combine_csv_files(input_directory, output_csv, subset_cols=dedupe_subset)
+==== END OF FILE: data/raw/csv_combiner/csv_combiner.py ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(1)Jan23-Jul23.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"31/07/2023 22:48:58","Auditing contractor","50864374","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 22:45:13","Auditing contractor","50864374","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 22:45:06","Auditing contractor","50864374","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 22:40:17","Auditing contractor","50864374","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 21:17:00","CLEANER Cleaner, Nunez, Eduardo","13180794","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 21:16:48","CLEANER Cleaner, Nunez, Eduardo","13180794","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 21:11:43","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 20:50:01","Auditing contractor","50864374","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 20:43:05","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:39:07","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:32:26","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:32:13","Auditing contractor","50864374","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 20:30:27","CLEANER Cleaner, Nunez, Eduardo","13180794","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 20:30:14","CLEANER Cleaner, Nunez, Eduardo","13180794","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 20:24:46","Auditing contractor","50864374","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 19:17:20","437 Thomas, George","55918336","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 19:12:47","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 19:12:14","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 19:12:07","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 18:36:55","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 18:30:22","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 18:29:37","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 18:29:17","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 18:06:34","263 Swarbreck, Cosmo","32953776","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 18:06:26","263 Swarbreck, Cosmo","32953776","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 18:05:25","263 Swarbreck, Cosmo","32953776","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 17:56:37","495 Andrade, Nzingha","42873158","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 17:54:23","437 Thomas, George","55918336","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 17:27:03","505 Magill, Harry","15598985","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 17:19:21","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 17:06:08","488 de Grande, Esther","22019347","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 17:03:37","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 17:03:29","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:59:53","136 Erskine, Oliver","97216191","Office Entrance North (In)","Access permitted - token only",""
+"31/07/2023 16:59:48","136 Erskine, Oliver","97216191","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:59:14","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 16:38:20","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:37:44","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:36:47","496 Ahmed, Sairah","46066664","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/07/2023 16:34:16","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:13:42","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 16:11:00","195 Thompson, Calum","57967540","Lift Lobby South (In)","Access permitted - token only",""
+"31/07/2023 16:10:05","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 15:33:00","505 Magill, Harry","15598985","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 15:17:44","136 Erskine, Oliver","97216191","Office Entrance West (In)","Access permitted - token only",""
+"31/07/2023 15:08:58","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 14:58:11","195 Thompson, Calum","57967540","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 14:45:06","263 Swarbreck, Cosmo","32953776","Lift Lobby North (In)","Access permitted - token only",""
+"31/07/2023 14:33:59","263 Swarbreck, Cosmo","32953776","Lift Lobby South (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(1)Jan23-Jul23.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(2)Aug23-Jan24.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"31/01/2024 22:43:28","CLEANER Cleaner, Nunez, Eduardo","13180794","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 22:07:46","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:51:43","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:51:33","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:51:17","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 21:49:53","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:47:03","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:43:50","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:34:25","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:34:18","CLEANER Cesar, Cleaner","79743897","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 21:29:34","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 21:28:50","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 21:28:43","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 21:21:55","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 20:46:27","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 20:45:50","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 20:45:41","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 20:19:27","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 20:06:46","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 20:02:34","CLEANER Cleaner, Nunez, Eduardo","13180794","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 19:59:54","308 Xu, Maggie","23799693","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 19:32:01","CLEANER Cesar, Cleaner","79743897","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:31:50","CLEANER Cesar, Cleaner","79743897","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 19:24:43","131 Nsamba, Sandra","85132049","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 19:12:54","519 Papadakos, Georgios","18579132","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:12:45","519 Papadakos, Georgios","18579132","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 19:08:33","CLEANER Cleaner, Nunez, Eduardo","13180794","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 19:08:03","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 19:07:28","327 Kennedy, Morgan","93351505","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:07:22","327 Kennedy, Morgan","93351505","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 19:04:31","327 Kennedy, Morgan","93351505","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 19:02:49","327 Kennedy, Morgan","93351505","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 19:02:42","327 Kennedy, Morgan","93351505","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 18:56:35","563 Rear, Caio","42058128","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:56:27","563 Rear, Caio","42058128","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 18:48:51","112 du Jeu, Penelope","78994024","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:47:20","158 Longworth, Esther","41807189","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:47:15","158 Longworth, Esther","41807189","Lift Lobby North (In)","Access permitted - token only",""
+"31/01/2024 18:46:36","112 du Jeu, Penelope","78994024","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 18:44:30","288 Snell, John","29019540","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:37:06","158 Longworth, Esther","41807189","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:30:46","488 de Grande, Esther","22019347","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"31/01/2024 18:28:26","199 Petzer, Carl","38043269","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:26:48","208 Kalkhoven, Brook","36026242","2nd Floor South LH Side (In)","Access permitted - token only",""
+"31/01/2024 18:24:05","516 Gomar, Dominic","29847650","Office Entrance West (In)","Access permitted - token only",""
+"31/01/2024 18:12:09","559 Desai, Nicolaus","51277005","Lift Lobby South (In)","Access permitted - token only",""
+"31/01/2024 18:07:15","106 van Strydonck, Livia","50423061","2nd Floor South RH Side (In)","Access permitted - token only",""
+"31/01/2024 18:06:45","425 Kim, Albert","26996860","Office Entrance North (In)","Access permitted - token only",""
+"31/01/2024 18:06:44","420 Hicks, James","21316335","2nd Floor South LH Side (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(2)Aug23-Jan24.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(3)Jan24-Jun24.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"28/06/2024 22:11:15","CLEANER Cesar, Cleaner","79743897","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 21:54:39","CLEANER Cesar, Cleaner","79743897","Lift Lobby North (In)","Access permitted - token only",""
+"28/06/2024 20:40:57","CLEANER Cesar, Cleaner","79743897","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 19:19:12","Contractor Pass, Lendable","17343254","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 18:05:32","CLEANER Cleaner, Analuisa, Maria","41837960","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 18:04:26","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby North (In)","Access permitted - token only",""
+"28/06/2024 17:56:40","397 Gordon, Richard","92279292","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 17:55:33","CLEANER Cleaner, Analuisa, Maria","41837960","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 17:24:29","Visitor Pass 1","76358299","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 17:08:56","205 Craig, Richard","39223341","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 17:00:16","143 Angopa, Bernard","82191387","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 16:42:00","352 Schroeder, Michal","24977878","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 16:33:55","Visitor Pass 1","76358299","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 16:31:59","131 Nsamba, Sandra","85132049","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 16:26:03","738 Shakespeare, Mark","72756871","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 16:18:33","384 Rosapep, Maria","92367799","2nd Floor South RH Side (In)","Access permitted - token only",""
+"28/06/2024 16:13:50","597 Chan, Aaron","72595213","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 16:12:15","721 Rahman, Rashidur","55831751","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:56:50","689 Suman, Anushka","12798371","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:54:30","689 Suman, Anushka","12798371","2nd Floor South RH Side (In)","Access permitted - token only",""
+"28/06/2024 15:54:22","205 Craig, Richard","39223341","Lift Lobby North (In)","Access permitted - token only",""
+"28/06/2024 15:52:35","Visitor Pass 1","76358299","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 15:49:45","397 Gordon, Richard","92279292","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:43:59","721 Rahman, Rashidur","55831751","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:37:04","597 Chan, Aaron","72595213","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 15:22:10","Visitor Pass 1","76358299","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 15:22:08","738 Shakespeare, Mark","72756871","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 15:11:51","352 Schroeder, Michal","24977878","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 15:10:21","352 Schroeder, Michal","24977878","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 15:07:18","352 Schroeder, Michal","24977878","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 14:38:07","498 Cairns, Oliver","65626103","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 14:21:05","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 14:11:13","488 de Grande, Esther","22019347","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 14:10:17","Visitor Pass 3","93825648","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 14:09:07","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 14:06:56","738 Shakespeare, Mark","72756871","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 14:05:41","397 Gordon, Richard","92279292","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:49:13","721 Rahman, Rashidur","55831751","Office Entrance West (In)","Access permitted - token only",""
+"28/06/2024 13:45:34","205 Craig, Richard","39223341","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:31:27","488 de Grande, Esther","22019347","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 13:29:05","Visitor Pass 1","76358299","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 13:28:22","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 13:28:09","Visitor Pass 1","76358299","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 13:28:07","488 de Grande, Esther","22019347","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:25:30","488 de Grande, Esther","22019347","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:22:21","558 Hart, Timothy","10669642","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"28/06/2024 13:21:27","397 Gordon, Richard","92279292","Lift Lobby South (In)","Access permitted - token only",""
+"28/06/2024 13:06:54","143 Angopa, Bernard","82191387","2nd Floor South LH Side (In)","Access permitted - token only",""
+"28/06/2024 13:03:54","Visitor Pass 1","76358299","Lift Lobby South (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(3)Jan24-Jun24.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(4)Jul24-Dec24.csv ====
+"Date/time","User","Details","Event","Department","Where"
+"31/12/2024 17:26:57","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 16:53:39","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 15:13:52","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"31/12/2024 14:56:50","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 14:55:40","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"31/12/2024 14:43:05","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"31/12/2024 14:41:21","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"31/12/2024 14:00:17","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 13:50:26","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"31/12/2024 13:34:20","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 12:37:34","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 12:31:01","498 Cairns, Oliver","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"31/12/2024 10:48:18","498 Cairns, Oliver","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"31/12/2024 08:16:33","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"31/12/2024 08:07:35","SECURITY Security Pass, Server Room","","Access permitted - token only","Telephone House Managment","Comms Room (In)"
+"31/12/2024 08:07:23","SECURITY Security Pass, Server Room","Invalid access","Access denied - invalid token","Telephone House Managment","Office Entrance West (In)"
+"30/12/2024 22:47:22","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 21:21:40","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 20:01:08","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 20:00:00","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 19:48:55","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 19:09:28","No Info Allauca, Miguel","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 18:02:48","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 18:01:26","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 17:08:36","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 17:05:31","CLEANER Cleaner, Analuisa, Maria","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 15:42:41","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 15:02:07","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 13:40:52","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 13:32:40","676 Dufour, Josiane","","Access permitted - token only","BambooHR","2nd Floor South LH Side (In)"
+"30/12/2024 12:54:02","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 12:43:33","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 12:20:49","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 11:30:22","498 Cairns, Oliver","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 11:29:07","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 11:21:44","488 de Grande, Esther","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"30/12/2024 11:12:39","498 Cairns, Oliver","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 10:34:25","488 de Grande, Esther","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 10:23:42","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 09:46:51","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"30/12/2024 09:46:39","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"30/12/2024 09:45:17","676 Dufour, Josiane","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"30/12/2024 09:10:54","488 de Grande, Esther","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"27/12/2024 20:16:13","CLEANER Cesar, Cleaner","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"27/12/2024 16:17:58","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"27/12/2024 16:00:24","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby North (In)"
+"27/12/2024 14:07:57","440 Khan, Shahed","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+"27/12/2024 12:11:57","440 Khan, Shahed","","Access permitted - token only","BambooHR","Lift Lobby South (In)"
+"27/12/2024 08:57:51","131 Nsamba, Sandra","","Access permitted - token only","BambooHR","Office Entrance West (In)"
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(4)Jul24-Dec24.csv ====
+
+==== START OF FILE: data/raw/csv_combiner/input_files/(5)Jan25-today.csv ====
+"Date/time","User","Token number","Where","Event","Details"
+"25/02/2025 15:07:30","918 Chrisostomou, Metaxoulla","99946904","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:07:28","833 Jefferies, Rosie","21542251","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 15:07:13","512 Kilian, Michael","41197139","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:06:57","863 Shaw-Frost, Oli","42175472","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:06:41","309 Chamberlain, Richard","39194399","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:05:42","863 Shaw-Frost, Oli","42175472","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:05:19","787 Evans, Peter","78353339","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:04:54","734 Carlile, Darren","16604372","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 15:04:51","247 Murray, Bethanie","94145226","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:04:35","906 Ferrabee, Lucy","11614251","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:04:06","909 Sharaf Akewushola, Mo","46356833","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:03:49","CHEF Chef, Matos, Angie","73320085","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:03:37","488 de Grande, Esther","74190211","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:03:08","609 Channer, Mark","87271512","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:02:21","304 Fielding, Adam","42824989","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:02:18","615 Miller, Daniel","55863178","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:02:08","309 Chamberlain, Richard","39194399","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:02:07","914 Hussain, Maira","52317029","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:02:03","167 Wilkinson, Stephen","50575498","2nd Floor South RH Side (In)","Access permitted - token only",""
+"25/02/2025 15:01:56","393 Davies, Josephine","79864245","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 15:01:48","744 Cannon, Laura","56652968","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 15:01:44","488 de Grande, Esther","74190211","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:01:33","195 Thompson, Calum","79853148","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 15:01:12","787 Evans, Peter","78353339","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 15:00:50","564 Palsikar, Mitali","71622581","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 15:00:36","498 Cairns, Oliver","9739965","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:00:26","136 Erskine, Oliver","97216191","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 15:00:22","787 Evans, Peter","78353339","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 15:00:09","232 Loi, Jessica","27858412","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:59:44","808 Neale, James","46731192","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:59:43","787 Evans, Peter","78353339","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 14:59:25","688 Davies, Stuart","69755068","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 14:58:18","554 Rogers-Jenkins, Arielle","26426112","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 14:58:14","564 Palsikar, Mitali","71622581","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:58:04","147 Denby, Charles","86141069","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 14:57:56","615 Miller, Daniel","55863178","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:57:11","832 Surridge, Scott","75995296","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 14:56:55","282 Mikkelsen, Karen","62865800","5th Floor LH Side Entrance  (In)","Access permitted - token only",""
+"25/02/2025 14:56:48","668 Stone, William","17200144","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:56:36","132 Longshaw, Alex","85428928","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 14:56:20","849 Hindhaugh, Rob","28807229","2nd Floor South RH Side (In)","Access permitted - token only",""
+"25/02/2025 14:56:11","859 Webb, George","285846","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 14:56:02","176 Grigorescu, Gabriel","68062195","Lift Lobby South (In)","Access permitted - token only",""
+"25/02/2025 14:56:01","835 Epstein, Ethan","58643657","2nd Floor South RH Side (In)","Access permitted - token only",""
+"25/02/2025 14:55:50","232 Loi, Jessica","27858412","Lift Lobby North (In)","Access permitted - token only",""
+"25/02/2025 14:55:40","206 Price, Matthew","54479979","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:55:33","799 Nevares, Ori","85090692","Office Entrance West (In)","Access permitted - token only",""
+"25/02/2025 14:55:03","789 Swain, Anthony","50885597","2nd Floor South LH Side (In)","Access permitted - token only",""
+"25/02/2025 14:53:55","804 Sultoon, Hugh","73745342","5th Floor RH Side Entrance  (In)","Access permitted - token only",""
+... [Truncated after 50 lines]
+
+==== END OF FILE: data/raw/csv_combiner/input_files/(5)Jan25-today.csv ====
+
+==== START OF FILE: src/dashboard.py ====
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from pathlib import Path
+from datetime import datetime, timedelta
+import time
+import gc  # For garbage collection
+
+# Data cleaning and ingestion imports
+from data_ingestion import (
+    load_key_card_data,
+    load_employee_info,
+    calculate_default_date_range
+)
+from data_cleaning import (
+    clean_key_card_data,
+    clean_employee_info,
+    merge_key_card_with_employee_info,
+    add_time_analysis_columns
+)
+
+# Data analysis imports
+from data_analysis import (
+    build_attendance_table,
+    calculate_visit_counts,
+    calculate_average_arrival_hour,
+    calculate_daily_attendance_percentage,
+    calculate_weekly_attendance_percentage,
+    calculate_attendance_by_weekday,
+    calculate_attendance_by_division,
+    calculate_individual_attendance,
+    create_employee_summary,
+    calculate_tue_thu_attendance_percentage,
+    calculate_daily_attendance_counts,
+    calculate_weekly_attendance_counts,
+    calculate_period_summary
+)
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def load_data(start_date=None, end_date=None, last_n_days=None):
+    """
+    Load and preprocess the data with caching.
+    
+    Args:
+        start_date: Optional start date string in format 'YYYY-MM-DD'
+        end_date: Optional end date string in format 'YYYY-MM-DD'
+        last_n_days: If provided, load only the last N days of data
+        
+    Returns:
+        Tuple of (key_card_df, employee_df)
+    """
+    start_time = time.time()
+    
+    key_card_path = Path("data/raw/key_card_access.csv")
+    key_card_df = load_key_card_data(
+        str(key_card_path), 
+        start_date=start_date, 
+        end_date=end_date, 
+        last_n_days=last_n_days
+    )
+    print(f"\nLoaded key card data: {len(key_card_df)} rows, "
+          f"from {key_card_df['Date/time'].min()} to {key_card_df['Date/time'].max()}")
+    
+    employee_path = Path("data/raw/employee_info.csv")
+    employee_df = load_employee_info(str(employee_path))
+    print(f"\nLoaded employee data: {len(employee_df)} rows")
+    
+    print(f"Data loading completed in {time.time() - start_time:.2f} seconds")
+    
+    return key_card_df, employee_df
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def process_data(key_card_df, employee_df):
+    """Process and merge data with caching."""
+    start_time = time.time()
+    
+    key_card_df = clean_key_card_data(key_card_df)
+    employee_df = clean_employee_info(employee_df)
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+    
+    # Clean up memory
+    del key_card_df
+    gc.collect()
+    
+    print(f"Data processing completed in {time.time() - start_time:.2f} seconds")
+    
+    return combined_df
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def calculate_analyses(combined_df, start_date=None, end_date=None):
+    """Calculate all analyses with caching."""
+    start_time = time.time()
+    
+    if start_date and end_date:
+        date_mask = (
+            (combined_df['date_only'] >= pd.to_datetime(start_date)) &
+            (combined_df['date_only'] <= pd.to_datetime(end_date))
+        )
+        filtered_df = combined_df[date_mask]
+    else:
+        filtered_df = combined_df
+    
+    # Create attendance table
+    attendance_table = build_attendance_table(filtered_df)
+    
+    # CRITICAL FIX: Merge attendance data back to filtered_df, just like in load_and_process_data
+    filtered_df = filtered_df.merge(
+        attendance_table[['employee_id', 'date_only', 'present', 'visits']],
+        on=['employee_id', 'date_only'],
+        how='left'
+    )
+    
+    # Fill any missing values in present column with 'No'
+    filtered_df['present'] = filtered_df['present'].fillna('No')
+    
+    # Calculate all analyses
+    tue_thu_attendance = calculate_tue_thu_attendance_percentage(filtered_df)
+    daily_counts = calculate_daily_attendance_counts(filtered_df)
+    weekly_counts = calculate_weekly_attendance_counts(filtered_df)
+    period_summary = calculate_period_summary(filtered_df, 
+                                           pd.to_datetime(start_date) if start_date else None,
+                                           pd.to_datetime(end_date) if end_date else None)
+    employee_summary = create_employee_summary(filtered_df)
+    
+    # Clean up memory
+    del filtered_df
+    gc.collect()
+    
+    print(f"Analysis calculations completed in {time.time() - start_time:.2f} seconds")
+    
+    return {
+        'attendance_table': attendance_table,
+        'tue_thu_attendance': tue_thu_attendance,
+        'daily_counts': daily_counts,
+        'weekly_counts': weekly_counts,
+        'period_summary': period_summary,
+        'employee_summary': employee_summary
+    }
+
+def save_processed_data(attendance_table, daily_attendance_pct, avg_arrival_hours):
+    """Save processed data to CSV files."""
+    # Create processed data directory if it doesn't exist
+    processed_dir = Path("data/processed")
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save each DataFrame
+    attendance_table.to_csv(processed_dir / "attendance_table.csv", index=False)
+    daily_attendance_pct.to_csv(processed_dir / "days_summary.csv", index=False)
+    avg_arrival_hours.to_csv(processed_dir / "avg_arrival_hours.csv", index=False)
+
+def load_and_process_data():
+    """Load and process all data, returning the combined DataFrame."""
+    # Load raw data
+    key_card_df, employee_df = load_data()
+    
+    # Clean data
+    key_card_df = clean_key_card_data(key_card_df)
+    employee_df = clean_employee_info(employee_df)
+    
+    # Merge datasets
+    combined_df = merge_key_card_with_employee_info(key_card_df, employee_df)
+    
+    # Create attendance table to get 'present' field
+    attendance_table = build_attendance_table(combined_df)
+    
+    # Merge attendance data back to combined_df
+    combined_df = combined_df.merge(
+        attendance_table[['employee_id', 'date_only', 'present', 'visits']],
+        on=['employee_id', 'date_only'],
+        how='left'
+    )
+    
+    # Fill any missing values in present column with 'No'
+    combined_df['present'] = combined_df['present'].fillna('No')
+    
+    # Print debug info
+    print("\nProcessed data info:")
+    print(f"Total rows: {len(combined_df)}")
+    print(f"Rows with present=Yes: {(combined_df['present'] == 'Yes').sum()}")
+    print(f"Unique employees: {combined_df['employee_id'].nunique()}")
+    print("\nSample of processed data:")
+    print(combined_df[['employee_id', 'date_only', 'present', 'visits', 'Location', 'Working Status']].head())
+    
+    return combined_df
+
+def filter_by_date_range(df: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp, date_col: str = 'date') -> pd.DataFrame:
+    """Filter DataFrame by date range."""
+    return df[
+        (df[date_col] >= pd.Timestamp(start_date)) &
+        (df[date_col] <= pd.Timestamp(end_date))
+    ]
+
+def format_date(date_str):
+    """Convert date string to formatted date (e.g., '7th August 2024')"""
+    date = pd.to_datetime(date_str)
+    
+    def ordinal(n):
+        if 10 <= n % 100 <= 20:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+        return str(n) + suffix
+    
+    return f"{ordinal(date.day)} {date.strftime('%B %Y')}"
+
+def main():
+    """Main function to run the dashboard."""
+    st.title("Office Attendance Dashboard")
+    
+    st.sidebar.header("Data Loading Options")
+    data_range_option = st.sidebar.radio(
+        "Select data range to analyze:",
+        ["Last year (faster)", "Last 6 months (fastest)", "Last 30 days (very fast)", 
+         "Custom date range", "All data (slower)"]
+    )
+    
+    start_date = None
+    end_date = None
+    last_n_days = None
+    
+    if data_range_option == "Last year (faster)":
+        last_n_days = 365
+    elif data_range_option == "Last 6 months (fastest)":
+        last_n_days = 180
+    elif data_range_option == "Last 30 days (very fast)":
+        last_n_days = 30
+    elif data_range_option == "Custom date range":
+        default_start, default_end = calculate_default_date_range(365)
+        date_range = st.sidebar.date_input(
+            "Select date range",
+            value=(pd.to_datetime(default_start), pd.to_datetime(default_end)),
+            min_value=pd.to_datetime("2023-01-01"),
+            max_value=datetime.now()
+        )
+        if len(date_range) == 2:
+            start_date = date_range[0].strftime("%Y-%m-%d")
+            end_date = date_range[1].strftime("%Y-%m-%d")
+    
+    data_load_state = st.text("Loading data... This may take a moment.")
+    
+    try:
+        key_card_df, employee_df = load_data(start_date, end_date, last_n_days)
+        data_load_state.text("Processing data...")
+        combined_df = process_data(key_card_df, employee_df)
+        
+        del key_card_df
+        del employee_df
+        gc.collect()
+        
+        data_load_state.text("Calculating analytics...")
+        analyses = calculate_analyses(combined_df, start_date, end_date)
+        data_load_state.empty()
+        
+        min_date = combined_df['date_only'].min()
+        max_date = combined_df['date_only'].max()
+        st.success(f"Loaded {len(combined_df):,} records from {min_date.strftime('%d %b %Y')} to {max_date.strftime('%d %b %Y')}")
+        
+        # Create tabs and display data (keep existing tab code, but use analyses dict)
+        tab1, tab2, tab3, tab4 = st.tabs(["Daily Overview", "Weekly Overview", "Period Summary", "Employee Details"])
+        
+        with tab1:
+            st.subheader("Daily Attendance Percentage (Tuesday-Thursday)")
+            if len(analyses['tue_thu_attendance']) > 0:
+                fig_daily_pct = px.line(
+                    analyses['tue_thu_attendance'],
+                    x='date',
+                    y='percentage',
+                    title='Daily Office Attendance Percentage (Tue-Thu)',
+                    labels={'percentage': 'Attendance %', 'date': 'Date'}
+                )
+                st.plotly_chart(fig_daily_pct)
+            
+            # Daily details table
+            st.subheader("Daily Attendance Details")
+            
+            # Format the date column before display
+            display_df = analyses['daily_counts'].copy()
+            display_df['date'] = display_df['date'].apply(format_date)
+            
+            # Rename columns to be more readable
+            column_mapping = {
+                'date': 'Date',
+                'day_of_week': 'Day of Week',
+                'london_hybrid_count': 'London, Hybrid Attendance (#)',
+                'eligible_london_hybrid': 'London, Hybrid (total #)',
+                'london_hybrid_percentage': 'London, Hybrid Attendance (%)',
+                'other_count': 'Non-London, Hybrid Attendance (#)',
+                'total_attendance': 'Total Attendance (#)'
+            }
+            
+            display_df = display_df.rename(columns=column_mapping)
+            
+            # Format numbers while keeping original values
+            count_columns = [
+                'London, Hybrid Attendance (#)',
+                'London, Hybrid (total #)',
+                'Non-London, Hybrid Attendance (#)',
+                'Total Attendance (#)'
+            ]
+            percentage_columns = ['London, Hybrid Attendance (%)']
+            
+            # Create a styled version for display
+            styled_df = display_df.copy()
+            for col in count_columns:
+                styled_df[col] = styled_df[col].apply(lambda x: f"{round(x):,}")
+            for col in percentage_columns:
+                styled_df[col] = styled_df[col].apply(lambda x: f"{x:.1f}%")
+            
+            # Reorder columns
+            column_order = [
+                'Date',
+                'Day of Week',
+                'London, Hybrid Attendance (#)',
+                'London, Hybrid (total #)',
+                'London, Hybrid Attendance (%)',
+                'Non-London, Hybrid Attendance (#)',
+                'Total Attendance (#)'
+            ]
+            styled_df = styled_df[column_order]
+            st.dataframe(styled_df, hide_index=True)
+        
+        with tab2:
+            st.subheader("Weekly Attendance Percentage (Tuesday-Thursday only)")
+            if len(analyses['weekly_counts']) > 0:
+                fig_weekly_pct = px.line(
+                    analyses['weekly_counts'],
+                    x='week_start',
+                    y='london_hybrid_percentage',
+                    title='Weekly Office Attendance Percentage',
+                    labels={
+                        'london_hybrid_percentage': 'Attendance %',
+                        'week_start': 'Week Starting'
+                    }
+                )
+                st.plotly_chart(fig_weekly_pct)
+            
+            st.subheader("Weekly Attendance Counts (Tuesday-Thursday only)")
+            if len(analyses['weekly_counts']) > 0:
+                fig_weekly_counts = px.bar(
+                    analyses['weekly_counts'],
+                    x='week_start',
+                    y=['london_hybrid_avg', 'other_avg'],
+                    title='Average Daily Attendance by Employee Type (Weekly)',
+                    labels={
+                        'week_start': 'Week Starting',
+                        'value': 'Average Daily Attendance',
+                        'variable': 'Employee Type'
+                    },
+                    barmode='stack'
+                )
+                
+                fig_weekly_counts.update_traces(
+                    name='London + Hybrid',
+                    selector=dict(name='london_hybrid_avg')
+                )
+                fig_weekly_counts.update_traces(
+                    name='Other Employees',
+                    selector=dict(name='other_avg')
+                )
+                
+                st.plotly_chart(fig_weekly_counts)
+            
+            # Weekly details table
+            st.subheader("Weekly Attendance Details (Tuesday-Thursday only)")
+            display_cols_weekly = {
+                'week_start': 'Week Starting',
+                'london_hybrid_avg': 'Avg. London, Hybrid Attendance (#)',
+                'avg_eligible_london_hybrid': 'Avg. London, Hybrid (total #)',
+                'london_hybrid_percentage': 'Avg. London, Hybrid Attendance (%)',
+                'other_avg': 'Avg. Non-London, Hybrid Attendance (#)',
+                'total_avg_attendance': 'Avg. Total Attendance (#)'
+            }
+            weekly_display = analyses['weekly_counts'][display_cols_weekly.keys()].rename(columns=display_cols_weekly)
+            
+            # Format the week_start column
+            weekly_display['Week Starting'] = weekly_display['Week Starting'].apply(format_date)
+            
+            # Create a styled version for display
+            styled_weekly = weekly_display.copy()
+            
+            # Format numbers
+            count_columns = [
+                'Avg. London, Hybrid Attendance (#)',
+                'Avg. London, Hybrid (total #)',
+                'Avg. Non-London, Hybrid Attendance (#)',
+                'Avg. Total Attendance (#)'
+            ]
+            percentage_columns = ['Avg. London, Hybrid Attendance (%)']
+            
+            for col in count_columns:
+                styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{round(x):,}")
+            for col in percentage_columns:
+                styled_weekly[col] = styled_weekly[col].apply(lambda x: f"{x:.1f}%")
+            
+            # Reorder columns
+            weekly_column_order = [
+                'Week Starting',
+                'Avg. London, Hybrid Attendance (#)',
+                'Avg. London, Hybrid (total #)',
+                'Avg. London, Hybrid Attendance (%)',
+                'Avg. Non-London, Hybrid Attendance (#)',
+                'Avg. Total Attendance (#)'
+            ]
+            styled_weekly = styled_weekly[weekly_column_order]
+            st.dataframe(styled_weekly, hide_index=True)
+        
+        with tab3:
+            st.subheader("Period Summary")
+            if len(analyses['period_summary']) > 0:
+                fig_period = px.bar(
+                    analyses['period_summary'],
+                    x='weekday',
+                    y=['london_hybrid_count', 'other_count'],
+                    title='Average Daily Attendance by Weekday',
+                    labels={
+                        'weekday': 'Day of Week',
+                        'value': 'Average Attendance',
+                        'variable': 'Employee Type'
+                    },
+                    barmode='group'
+                )
+                
+                fig_period.update_traces(
+                    name='London + Hybrid',
+                    selector=dict(name='london_hybrid_count')
+                )
+                fig_period.update_traces(
+                    name='Other Employees',
+                    selector=dict(name='other_count')
+                )
+                
+                st.plotly_chart(fig_period)
+                
+                # Period summary table
+                st.subheader("Weekday Averages")
+                display_cols_period = {
+                    'weekday': 'Day of Week',
+                    'london_hybrid_count': 'Avg. London + Hybrid Count',
+                    'other_count': 'Avg. Other Count',
+                    'attendance_percentage': 'London + Hybrid Attendance %'
+                }
+                period_display = analyses['period_summary'][display_cols_period.keys()].rename(columns=display_cols_period)
+                
+                # Create styled version
+                styled_period = period_display.copy()
+                
+                # Format numbers
+                count_columns = ['Avg. London + Hybrid Count', 'Avg. Other Count']
+                percentage_columns = ['London + Hybrid Attendance %']
+                
+                for col in count_columns:
+                    styled_period[col] = styled_period[col].apply(lambda x: f"{round(x):,}")
+                for col in percentage_columns:
+                    styled_period[col] = styled_period[col].apply(lambda x: f"{x:.1f}%")
+                
+                st.dataframe(styled_period, hide_index=True)
+        
+        with tab4:
+            st.subheader("Employee Attendance Summary")
+            
+            # Filter employee summary for selected date range only if both dates are provided
+            if start_date and end_date:
+                date_filtered_df = combined_df[
+                    (combined_df['date_only'] >= pd.to_datetime(start_date)) &
+                    (combined_df['date_only'] <= pd.to_datetime(end_date))
+                ]
+            else:
+                date_filtered_df = combined_df  # Use all data if no date range
+            
+            # Get employee summary with friendly column headers
+            filtered_employee_summary = analyses['employee_summary']
+            
+            # Display the table (no additional renaming needed as it's done in create_employee_summary)
+            st.dataframe(filtered_employee_summary, hide_index=True)
+    
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        print(f"Error details: {e}")
+
+if __name__ == "__main__":
+    main()
+
+==== END OF FILE: src/dashboard.py ====
+
+==== START OF FILE: src/data_analysis.py ====
+import pandas as pd
+
+def build_attendance_table(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build attendance table from key card data.
+    """
+    df = df.copy()
+    
+    # Debug step 1: Show earliest 3 scans per day per employee
+    print("\n[DEBUG] Earliest 3 scans per day per employee:")
+    temp = (
+        df
+        .sort_values(["employee_id", "date_only", "parsed_time"])
+        .groupby(["employee_id", "date_only"])
+        .head(3)
+    )
+    print(temp[["employee_id", "date_only", "parsed_time", "Where"]].head(50))
+    
+    # Debug step 3: Check location/working status filtering
+    location_mask = (df["Location"] == "London UK")
+    working_mask = (df["Working Status"] == "Hybrid")
+    print("\n[DEBUG] Location/Working Status Analysis:")
+    print(f"Total rows: {len(df)}")
+    print(f"Rows with non-London or non-Hybrid: {len(df[~(location_mask & working_mask)])}")
+    
+    # Group value counts for investigation
+    print("\nLocation distribution:")
+    print(df["Location"].value_counts())
+    print("\nWorking Status distribution:")
+    print(df["Working Status"].value_counts())
+    
+    # 1) Get unique employees and dates
+    unique_employees = df[["employee_id", "Last name, First name"]].drop_duplicates()
+    unique_dates = df["date_only"].unique()
+    
+    # 2) Build cartesian product (every employee x every date)
+    employee_dates = []
+    for _, employee in unique_employees.iterrows():
+        for date in unique_dates:
+            employee_dates.append({
+                "employee_id": employee["employee_id"],
+                "employee_name": employee["Last name, First name"],
+                "date_only": date
+            })
+    
+    cross_df = pd.DataFrame(employee_dates)
+    
+    # 3) Mark presence by checking if there's data for that employee-date
+    attendance = (
+        df.groupby(["employee_id", "date_only"])
+        .size()
+        .reset_index(name="visits")
+    )
+    
+    # Merge attendance data with our cartesian product
+    merged = cross_df.merge(
+        attendance,
+        on=["employee_id", "date_only"],
+        how="left"
+    )
+    
+    # After marking presence
+    merged["visits"] = merged["visits"].fillna(0)
+    merged["present"] = merged["visits"].map({0: "No"}).fillna("Yes")
+    
+    # Debug step 2: Show rows marked as 'present'
+    print("\n[DEBUG] Checking presence logic. Sample 'present' rows:")
+    present_only = merged[merged["present"] == "Yes"]
+    print(present_only[["employee_id", "employee_name", "date_only", "present", "visits"]].head(30))
+    
+    # 4) Calculate total days attended per employee
+    days_attended = (
+        merged[merged["present"] == "Yes"]
+        .groupby("employee_id")
+        .size()
+        .reset_index(name="days_attended")
+    )
+    
+    # Merge days_attended back to our main table
+    final_df = merged.merge(days_attended, on="employee_id", how="left")
+    
+    # Sort by employee name and date
+    final_df = final_df.sort_values(["employee_name", "date_only"])
+    
+    return final_df
+
+def calculate_visit_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Count the number of visits (rows in the key card data) per employee_id.
+    """
+    return (
+        df.groupby("employee_id")
+        .size()
+        .reset_index(name="visit_count")
+    )
+
+def calculate_average_arrival_hour(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate the average arrival hour for each employee."""
+    df = df.copy()
+    
+    # Get first scan of each day for each employee
+    first_scans = (
+        df.sort_values(['employee_id', 'date_only', 'parsed_time'])
+        .groupby(['employee_id', 'date_only'])
+        .first()
+        .reset_index()
+    )
+    
+    # Calculate arrival hour from parsed_time
+    first_scans['arrival_hour'] = first_scans['parsed_time'].dt.hour
+    
+    # Calculate average arrival hour per employee
+    return (
+        first_scans
+        .groupby('employee_id')['arrival_hour']
+        .mean()
+        .round(2)
+        .reset_index()
+    )
+
+def calculate_daily_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the daily attendance percentage for hybrid employees.
+    Only counts employees who:
+    - Are based in London UK
+    - Have hybrid working status
+    - Were employed on that date (after hire date, before resignation)
+    """
+    # Get all unique dates and sort them
+    all_dates = sorted(df['date_only'].unique())
+    
+    # Initialize results
+    daily_attendance = []
+    
+    for date in all_dates:
+        # Filter for employees who were employed on this date
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |  # Still employed
+                (pd.to_datetime(df['Most recent day worked']) >= date)  # Not yet left
+            )
+        )
+        
+        # Filter for London & Hybrid employees
+        location_mask = (df['Location'] == 'London UK')
+        working_mask = (df['Working Status'] == 'Hybrid')
+        
+        # Get total eligible employees for this date
+        eligible_employees = df[
+            active_mask & location_mask & working_mask
+        ]['employee_id'].nunique()
+        
+        # Get employees who were present
+        present_employees = df[
+            (df['date_only'] == date) &
+            active_mask & 
+            location_mask & 
+            working_mask &
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        if eligible_employees > 0:
+            percentage = (present_employees / eligible_employees) * 100
+        else:
+            percentage = 0
+        
+        daily_attendance.append({
+            'date': date,
+            'total_eligible': eligible_employees,
+            'total_present': present_employees,
+            'percentage': round(percentage, 1)
+        })
+    
+    return pd.DataFrame(daily_attendance)
+
+def calculate_weekly_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate weekly attendance percentage, considering Tuesday-Thursday.
+    Uses the attendance table (one row per employee per day).
+    """
+    # Ensure we're working with datetime
+    df = df.copy()
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    
+    # Filter for office days and create week_commencing
+    office_days = df[df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])]
+    office_days['week_commencing'] = office_days['date_only'] - pd.to_timedelta(
+        office_days['date_only'].dt.dayofweek, unit='d')
+    
+    result = []
+    for week in sorted(office_days['week_commencing'].unique()):
+        week_end = week + pd.Timedelta(days=6)
+        
+        # Get eligible employees for this week
+        eligible_employees = df[
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') &
+            (pd.to_datetime(df['Combined hire date']) <= week_end) &
+            ((pd.to_datetime(df['Most recent day worked']) >= week) | 
+             (df['Status'] == 'Active'))
+        ].drop_duplicates('employee_id')
+        
+        if len(eligible_employees) == 0:
+            continue
+        
+        # For each eligible employee, count their attendance days this week
+        total_attendance = 0
+        for _, emp in eligible_employees.iterrows():
+            days_attended = office_days[
+                (office_days['week_commencing'] == week) &
+                (office_days['employee_id'] == emp['employee_id']) &
+                (office_days['present'] == 'Yes')
+            ]['date_only'].nunique()
+            total_attendance += days_attended
+        
+        # Total possible days is (eligible employees × 3 days)
+        total_possible_days = len(eligible_employees) * 3
+        attendance_percentage = (total_attendance / total_possible_days * 100)
+        
+        result.append({
+            'week_commencing': week,
+            'days_attended': total_attendance,
+            'total_possible_days': total_possible_days,
+            'attendance_percentage': attendance_percentage
+        })
+    
+    return pd.DataFrame(result).sort_values('week_commencing')
+
+def calculate_attendance_by_weekday(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate attendance numbers by day of week.
+    
+    Args:
+        df: Combined dataframe with employee and attendance data
+        
+    Returns:
+        DataFrame with attendance by weekday
+    """
+    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    weekday_counts = df.groupby('day_of_week').apply(
+        lambda x: pd.Series({
+            'london_hybrid_count': sum((x['Location'] == 'London UK') & 
+                                     (x['Working Status'] == 'Hybrid') &
+                                     (x['present'] == 'Yes')),
+            'other_count': sum(~((x['Location'] == 'London UK') & 
+                               (x['Working Status'] == 'Hybrid')) &
+                             (x['present'] == 'Yes'))
+        })
+    ).reset_index()
+    
+    weekday_counts['day_of_week'] = pd.Categorical(
+        weekday_counts['day_of_week'], 
+        categories=weekday_order, 
+        ordered=True
+    )
+    return weekday_counts.sort_values('day_of_week')
+
+def calculate_attendance_by_division(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate attendance numbers and percentages by division.
+    Counts unique employee-days for accurate attendance tracking.
+    """
+    # Get unique divisions, filtering out NaN values
+    unique_divisions = [d for d in df['Division'].unique() if pd.notna(d)]
+    unique_divisions.sort()  # Sort alphabetically
+    
+    result = []
+    for division in unique_divisions:
+        # Get division employees
+        division_employees = df[
+            (df['Division'] == division) & 
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid')
+        ].drop_duplicates('employee_id')
+        
+        if len(division_employees) == 0:
+            continue
+        
+        # Count unique employee-days of attendance
+        attendance_days = df[
+            (df['Division'] == division) & 
+            (df['Location'] == 'London UK') & 
+            (df['Working Status'] == 'Hybrid') & 
+            (df['present'] == 'Yes')
+        ].groupby('employee_id')['date_only'].nunique().sum()
+        
+        # Calculate total possible days for each employee based on their employment period
+        total_possible_days = 0
+        for _, emp in division_employees.iterrows():
+            hire_date = pd.to_datetime(emp['Combined hire date'])
+            last_day = pd.to_datetime(emp['Most recent day worked'])
+            
+            # Get all dates in the dataset
+            all_dates = pd.to_datetime(df['date_only'].unique())
+            
+            # Filter dates to employment period
+            valid_dates = all_dates[
+                (all_dates >= hire_date) & 
+                ((all_dates <= last_day) | (emp['Status'] == 'Active'))
+            ]
+            
+            total_possible_days += len(valid_dates)
+        
+        # Calculate percentage
+        attendance_percentage = (attendance_days / total_possible_days * 100) if total_possible_days > 0 else 0
+        
+        result.append({
+            'division': division,
+            'attendance_days': attendance_days,
+            'total_possible_days': total_possible_days,
+            'attendance_percentage': attendance_percentage
+        })
+    
+    return pd.DataFrame(result)
+
+def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate individual employee attendance metrics."""
+    result = []
+    
+    # Ensure Date/time is properly parsed
+    df['Date/time'] = pd.to_datetime(df['Date/time'], dayfirst=True)
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    
+    # Add more detailed debugging
+    print("\nOverall Dataset Analysis:")
+    print(f"Total unique dates: {df['date_only'].nunique()}")
+    print(f"Date range: {df['date_only'].min()} to {df['date_only'].max()}")
+    print("\nEntrance distribution by hour:")
+    print(df['Date/time'].dt.hour.value_counts().sort_index())
+    print("\nEntrance distribution by location:")
+    print(df['Where'].value_counts())
+    
+    # Get the date range of our key card data
+    data_start_date = df['date_only'].min()
+    data_end_date = df['date_only'].max()
+    
+    # Get unique employees
+    unique_employees = df['employee_id'].unique()
+    
+    for emp_id in unique_employees:
+        emp_data = df[df['employee_id'] == emp_id].copy()
+        
+        # Get employee info
+        first_record = emp_data.iloc[0]
+        emp_name = first_record['Last name, First name']
+        hire_date = pd.to_datetime(first_record['Combined hire date'])
+        last_day = pd.to_datetime(first_record['Most recent day worked'])
+        location = first_record['Location']
+        working_status = first_record['Working Status']
+        status = first_record['Status']
+        
+        # If last_day is NaT (for active employees), use the end of our data range
+        if pd.isna(last_day) and status == 'Active':
+            last_day = data_end_date
+        
+        # Total days attended (any day)
+        days_attended = emp_data[emp_data['present'] == 'Yes']['date_only'].nunique()
+        
+        # Initialize core days metrics
+        core_days_percentage = None
+        avg_entry_time = None
+        
+        # Only calculate core metrics for London Hybrid employees
+        if location == 'London UK' and working_status == 'Hybrid':
+            # Get all core days (Tue-Thu) during employment AND within our data range
+            start_date = max(hire_date, data_start_date)
+            end_date = min(last_day, data_end_date)
+            
+            all_dates = pd.date_range(start=start_date, end=end_date)
+            core_weekdays = all_dates[all_dates.dayofweek.isin([1, 2, 3])]  # Tue=1, Wed=2, Thu=3
+            total_possible_core_days = len(core_weekdays)
+            
+            # Filter for attended core days
+            core_attendance = emp_data[
+                (emp_data['present'] == 'Yes') & 
+                (emp_data['date_only'].dt.dayofweek.isin([1, 2, 3]))
+            ]
+            
+            # Debug: Print sample of core attendance for this employee
+            if not core_attendance.empty:
+                print(f"\nDebug - Employee {emp_id} ({emp_name}) core attendance sample:")
+                print(f"Date/time dtype: {core_attendance['Date/time'].dtype}")
+                print("\nFirst 5 records sorted by Date/time:")
+                debug_sample = (
+                    core_attendance
+                    .sort_values('Date/time')
+                    .head()
+                    [['date_only', 'Date/time', 'Event', 'Where']]
+                )
+                print(debug_sample)
+            
+            # Count unique core days attended
+            core_days_attended = core_attendance['date_only'].nunique()
+            
+            # Calculate percentage
+            if total_possible_core_days > 0:
+                core_days_percentage = round((core_days_attended / total_possible_core_days) * 100, 1)
+            
+            # Calculate average first entry time for core days
+            if not core_attendance.empty:
+                # Sort by date/time and get actual first entry of each day
+                daily_first_entries = (
+                    core_attendance
+                    .sort_values('Date/time', ascending=True)
+                    .groupby('date_only')['Date/time']
+                    .first()
+                )
+                
+                # Flag late entries (after 11:00)
+                late_entries = daily_first_entries[daily_first_entries.dt.hour >= 11]
+                if not late_entries.empty:
+                    print(f"\nLate entries for {emp_name}:")
+                    print(late_entries)
+                    print(f"Entrance locations for late entries:")
+                    print(core_attendance[
+                        core_attendance['date_only'].isin(late_entries.index)
+                    ]['Where'].value_counts())
+                
+                # Debug: Print first entries for verification
+                print("\nFirst entries of each day:")
+                print(daily_first_entries.head())
+                
+                # Extract just the time component
+                daily_times = daily_first_entries.dt.time
+                
+                # Convert times to minutes since midnight
+                minutes = pd.Series([
+                    t.hour * 60 + t.minute 
+                    for t in daily_times
+                ])
+                
+                # Calculate average and convert back to time string
+                avg_minutes = round(minutes.mean())
+                hours = avg_minutes // 60
+                mins = avg_minutes % 60
+                avg_entry_time = f"{int(hours):02d}:{int(mins):02d}"
+                
+                # Debug: Print time calculation details
+                print(f"\nAverage calculation:")
+                print(f"Total minutes: {minutes.tolist()}")
+                print(f"Average minutes: {avg_minutes}")
+                print(f"Calculated time: {avg_entry_time}")
+        
+        result.append({
+            'employee_name': emp_name,
+            'days_attended': days_attended,
+            'core_days_percentage': core_days_percentage,
+            'avg_entry_time': avg_entry_time
+        })
+    
+    return pd.DataFrame(result)
+
+def calculate_mean_arrival_time(times_series: pd.Series) -> tuple[str, list]:
+    """
+    Calculate mean arrival time while excluding outliers.
+    
+    Args:
+        times_series: Series of datetime.time objects
+        
+    Returns:
+        tuple: (formatted_mean_time, list_of_excluded_times)
+    """
+    if times_series.empty:
+        return None, []
+        
+    # Convert times to minutes since midnight
+    minutes = pd.Series([
+        t.hour * 60 + t.minute 
+        for t in times_series
+    ], index=times_series.index)
+    
+    # Calculate median
+    median_minutes = minutes.median()
+    
+    # Define outlier threshold (2 hours = 120 minutes)
+    threshold = 120
+    
+    # Identify and exclude outliers
+    is_outlier = abs(minutes - median_minutes) > threshold
+    clean_minutes = minutes[~is_outlier]
+    excluded_times = times_series[is_outlier]
+    
+    if clean_minutes.empty:
+        return None, list(excluded_times)
+    
+    # Calculate mean of non-outlier times
+    mean_minutes = round(clean_minutes.mean())
+    mean_hours = mean_minutes // 60
+    mean_mins = mean_minutes % 60
+    
+    return f"{int(mean_hours):02d}:{int(mean_mins):02d}", list(excluded_times)
+
+def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create employee summary table with attendance metrics.
+    
+    Args:
+        df: Combined dataframe with employee and attendance data
+        
+    Returns:
+        DataFrame with employee attendance summary
+    """
+    # Ensure date columns are datetime
+    df['date_only'] = pd.to_datetime(df['date_only'])
+    df['Combined hire date'] = pd.to_datetime(df['Combined hire date'])
+    df['Most recent day worked'] = pd.to_datetime(df['Most recent day worked'])
+    
+    # Get the full date range from the data
+    date_range = pd.date_range(
+        start=df['date_only'].min(),
+        end=df['date_only'].max()
+    )
+    
+    # Initialize results list
+    results = []
+    
+    # Get unique employees
+    unique_employees = df.drop_duplicates('employee_id')[
+        ['employee_id', 'Last name, First name']
+    ]
+    
+    for _, emp in unique_employees.iterrows():
+        emp_id = emp['employee_id']
+        emp_name = emp['Last name, First name']
+        
+        # Get employee's data
+        emp_data = df[df['employee_id'] == emp_id].copy()
+        if emp_data.empty:
+            continue
+            
+        # Get first record for this employee
+        first_record = emp_data.iloc[0]
+        
+        # Get employment dates
+        hire_date = pd.to_datetime(first_record['Combined hire date'])
+        last_day = pd.to_datetime(first_record['Most recent day worked'])
+        
+        # If last_day is NaT (active employee), use the end of our data range
+        if pd.isna(last_day):
+            last_day = date_range[-1]
+            
+        # Filter for days when employee was employed
+        employed_dates = date_range[
+            (date_range >= hire_date) & 
+            (date_range <= last_day)
+        ]
+        
+        # Get attended days
+        attended_days = emp_data[
+            (emp_data['present'] == 'Yes')
+        ]['date_only'].nunique()
+        
+        # Get Tue-Thu metrics
+        tue_thu_mask = emp_data['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+        attended_tue_thu = emp_data[
+            (emp_data['present'] == 'Yes') & 
+            tue_thu_mask
+        ]['date_only'].nunique()
+        
+        # Count potential Tue-Thu during employment
+        employed_tue_thu = len(employed_dates[employed_dates.dayofweek.isin([1, 2, 3])])
+        
+        # Calculate mean and median entry times for Tue-Thu
+        tue_thu_entries = emp_data[
+            (emp_data['present'] == 'Yes') & 
+            tue_thu_mask
+        ].groupby('date_only')['parsed_time'].min()
+        
+        if not tue_thu_entries.empty:
+            # Calculate mean (excluding outliers) and get list of excluded times
+            mean_entry_str, excluded_times = calculate_mean_arrival_time(tue_thu_entries)
+            
+            # Debug logging for excluded times
+            if excluded_times:
+                print(f"\nExcluded arrival times for {emp_name}:")
+                for time in excluded_times:
+                    print(f"  {time}")
+            
+            # Calculate median (using all times)
+            minutes = pd.Series([
+                t.hour * 60 + t.minute 
+                for t in tue_thu_entries
+            ], index=tue_thu_entries.index)
+            
+            median_minutes = round(minutes.median())
+            median_hours = median_minutes // 60
+            median_mins = median_minutes % 60
+            median_entry_str = f"{int(median_hours):02d}:{int(median_mins):02d}"
+        else:
+            mean_entry_str = None
+            median_entry_str = None
+        
+        results.append({
+            'employee_id': emp_id,
+            'name': emp_name,
+            'total_days_attended': attended_days,
+            'tue_thu_days_attended': attended_tue_thu,
+            'potential_tue_thu_days': employed_tue_thu,
+            'mean_arrival_time': mean_entry_str,
+            'median_arrival_time': median_entry_str,
+            'attendance_rate': round(attended_tue_thu / employed_tue_thu * 100, 1) if employed_tue_thu > 0 else 0
+        })
+    
+    # Convert to DataFrame and sort by attendance rate
+    result_df = pd.DataFrame(results).sort_values('attendance_rate', ascending=False)
+    
+    # Round numeric columns
+    numeric_cols = ['total_days_attended', 'tue_thu_days_attended', 'potential_tue_thu_days', 'attendance_rate']
+    result_df[numeric_cols] = result_df[numeric_cols].round(1)
+    
+    # Rename columns to be more readable
+    column_mapping = {
+        'employee_id': 'Employee ID',
+        'name': 'Employee Name',
+        'total_days_attended': 'Total Days Attended',
+        'tue_thu_days_attended': 'Tuesday-Thursday Days',
+        'potential_tue_thu_days': 'Potential Office Days',
+        'mean_arrival_time': 'Mean Arrival Time',
+        'median_arrival_time': 'Median Arrival Time',
+        'attendance_rate': 'Attendance Rate (%)'
+    }
+    
+    # Format percentage columns
+    result_df['attendance_rate'] = result_df['attendance_rate'].apply(
+        lambda x: f"{x:.1f}%" if pd.notnull(x) else None
+    )
+    
+    return result_df.rename(columns=column_mapping)
+
+def calculate_tue_thu_attendance_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily attendance percentage, excluding Mon/Fri."""
+    df = df.copy()
+    
+    # Filter for Tue-Thu
+    tue_thu_mask = df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday'])
+    df = df[tue_thu_mask]
+    
+    # Get all unique dates and sort them
+    all_dates = sorted(df['date_only'].unique())
+    
+    daily_attendance = []
+    for date in all_dates:
+        # Filter for employees who were employed on this date
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= date)
+            )
+        )
+        
+        # Filter for London & Hybrid employees
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Calculate metrics
+        eligible_employees = df[active_mask & london_hybrid_mask]['employee_id'].nunique()
+        present_employees = df[
+            (df['date_only'] == date) &
+            active_mask & 
+            london_hybrid_mask &
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        percentage = (present_employees / eligible_employees * 100) if eligible_employees > 0 else 0
+        
+        daily_attendance.append({
+            'date': date,
+            'total_eligible': eligible_employees,
+            'total_present': present_employees,
+            'percentage': round(percentage, 1)
+        })
+    
+    return pd.DataFrame(daily_attendance)
+
+def calculate_daily_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily attendance counts split by employee type."""
+    # Calculate attendance for each day
+    daily_counts = []
+    
+    for date in sorted(df['date_only'].unique()):
+        date_mask = (df['date_only'] == date)
+        
+        # Consider employment dates
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= date) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= date)
+            )
+        )
+        
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Count London + Hybrid who were present
+        london_hybrid_count = df[
+            date_mask & 
+            active_mask &
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Count others who were present
+        others_count = df[
+            date_mask & 
+            active_mask &
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ]['employee_id'].nunique()
+        
+        # Get total eligible London + Hybrid employees for that date
+        total_eligible_london_hybrid = df[
+            active_mask &
+            london_hybrid_mask
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage based on eligible employees
+        attendance_percentage = (
+            (london_hybrid_count / total_eligible_london_hybrid * 100)
+            if total_eligible_london_hybrid > 0 else 0
+        )
+        
+        daily_counts.append({
+            'date': date,
+            'day_of_week': pd.Timestamp(date).strftime('%A'),
+            'london_hybrid_count': london_hybrid_count,
+            'other_count': others_count,
+            'eligible_london_hybrid': total_eligible_london_hybrid,  # Added for verification
+            'london_hybrid_percentage': round(attendance_percentage, 1),
+            'total_attendance': london_hybrid_count + others_count
+        })
+    
+    return pd.DataFrame(daily_counts)
+
+def calculate_weekly_attendance_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate weekly attendance counts split by employee type.
+    Only considers Tuesday, Wednesday, and Thursday.
+    """
+    df = df.copy()
+    
+    # Add week start date (Monday)
+    df['week_start'] = df['date_only'] - pd.to_timedelta(df['date_only'].dt.dayofweek, unit='d')
+    
+    weekly_counts = []
+    for week_start in sorted(df['week_start'].unique()):
+        week_end = week_start + pd.Timedelta(days=6)
+        
+        # Updated week_mask to only include Tue-Thu
+        week_mask = (
+            (df['date_only'] >= week_start) & 
+            (df['date_only'] <= week_end) &
+            (df['day_of_week'].isin(['Tuesday', 'Wednesday', 'Thursday']))
+        )
+        
+        # Get daily eligible counts for Tue-Thu
+        daily_eligible = []
+        for date in pd.date_range(week_start, week_end):
+            if date.strftime('%A') in ['Tuesday', 'Wednesday', 'Thursday']:
+                # Consider employment dates
+                active_mask = (
+                    (pd.to_datetime(df['Combined hire date']) <= date) &
+                    (
+                        (df['Most recent day worked'].isna()) |
+                        (pd.to_datetime(df['Most recent day worked']) >= date)
+                    )
+                )
+                
+                london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+                
+                # Count eligible employees for this day
+                eligible_count = df[
+                    active_mask &
+                    london_hybrid_mask
+                ]['employee_id'].nunique()
+                
+                daily_eligible.append(eligible_count)
+        
+        # Calculate average eligible employees across Tue-Thu
+        avg_eligible = round(sum(daily_eligible) / len(daily_eligible), 1) if daily_eligible else 0
+        
+        # Consider employment dates for the week
+        active_mask = (
+            (pd.to_datetime(df['Combined hire date']) <= week_end) &
+            (
+                (df['Most recent day worked'].isna()) |
+                (pd.to_datetime(df['Most recent day worked']) >= week_start)
+            )
+        )
+        
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Calculate daily attendance for London+Hybrid
+        london_hybrid_daily = df[
+            week_mask & 
+            active_mask &
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique()
+        
+        # Calculate daily attendance for others
+        others_daily = df[
+            week_mask & 
+            active_mask &
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique()
+        
+        # Calculate averages
+        london_hybrid_avg = london_hybrid_daily.mean() if not london_hybrid_daily.empty else 0
+        others_avg = others_daily.mean() if not others_daily.empty else 0
+        
+        # Calculate attendance percentage using average eligible employees
+        attendance_percentage = (
+            (london_hybrid_avg / avg_eligible * 100)
+            if avg_eligible > 0 else 0
+        )
+        
+        weekly_counts.append({
+            'week_start': week_start,
+            'london_hybrid_avg': round(london_hybrid_avg, 1),
+            'other_avg': round(others_avg, 1),
+            'avg_eligible_london_hybrid': avg_eligible,  # New field
+            'london_hybrid_percentage': round(attendance_percentage, 1),
+            'total_avg_attendance': round(london_hybrid_avg + others_avg, 1)
+        })
+    
+    return pd.DataFrame(weekly_counts)
+
+def calculate_period_summary(df: pd.DataFrame, start_date=None, end_date=None) -> pd.DataFrame:
+    """Calculate attendance summary by weekday for a given period."""
+    df = df.copy()
+    
+    # Filter for date range only if both dates are provided
+    if start_date is not None and end_date is not None:
+        date_mask = (df['date_only'] >= start_date) & (df['date_only'] <= end_date)
+        df = df[date_mask]
+    
+    # Create weekday averages
+    weekday_stats = []
+    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+        day_mask = (df['day_of_week'] == day)
+        london_hybrid_mask = (df['Location'] == 'London UK') & (df['Working Status'] == 'Hybrid')
+        
+        # Get attendance for this weekday
+        london_hybrid_attendance = df[
+            day_mask & 
+            london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        others_attendance = df[
+            day_mask & 
+            ~london_hybrid_mask & 
+            (df['present'] == 'Yes')
+        ].groupby('date_only')['employee_id'].nunique().mean()
+        
+        # Get eligible London+Hybrid employees
+        eligible_london_hybrid = df[
+            day_mask &
+            london_hybrid_mask
+        ]['employee_id'].nunique()
+        
+        # Calculate percentage
+        attendance_percentage = (
+            (london_hybrid_attendance / eligible_london_hybrid * 100)
+            if eligible_london_hybrid > 0 else 0
+        )
+        
+        weekday_stats.append({
+            'weekday': day,
+            'london_hybrid_count': round(london_hybrid_attendance, 1) if not pd.isna(london_hybrid_attendance) else 0,
+            'other_count': round(others_attendance, 1) if not pd.isna(others_attendance) else 0,
+            'attendance_percentage': round(attendance_percentage, 1)
+        })
+    
+    return pd.DataFrame(weekday_stats)
+==== END OF FILE: src/data_analysis.py ====
+
+==== START OF FILE: src/data_cleaning.py ====
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+def load_key_card_data(filepath: str) -> pd.DataFrame:
+    """Load key card data from CSV file."""
+    df = pd.read_csv(filepath)
+    print("\nLoaded key card data columns:", df.columns.tolist())
+    return df
+
+def load_employee_info(filepath: str) -> pd.DataFrame:
+    """Load employee information from CSV file."""
+    df = pd.read_csv(filepath)
+    print("\nLoaded employee info columns:", df.columns.tolist())
+    return df
+
+def compute_combined_hire_date(result: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
+    """Use the earlier of Hire Date and Original Hire Date (if available)."""
+    if "Original Hire Date" in df.columns:
+        hire_date = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
+        original_hire_date = pd.to_datetime(df["Original Hire Date"], errors="coerce", dayfirst=True)
+        result["Combined hire date"] = pd.concat([hire_date, original_hire_date], axis=1).min(axis=1)
+    else:
+        result["Combined hire date"] = pd.to_datetime(df["Hire Date"], errors="coerce", dayfirst=True)
+    return result
+
+def compute_most_recent_day_worked(df: pd.DataFrame) -> pd.DataFrame:
+    """Prefer Last Day over Resignation Date for departure info."""
+    df = df.copy()
+    
+    # Initialize with Last Day if it exists
+    if "Last Day" in df.columns:
+        df["Most recent day worked"] = df["Last Day"]
+    else:
+        df["Most recent day worked"] = pd.NaT
+    
+    # Fill in with Resignation Date where Last Day is missing
+    if "Resignation Date" in df.columns:
+        mask = df["Most recent day worked"].isna()
+        df.loc[mask, "Most recent day worked"] = df.loc[mask, "Resignation Date"]
+    
+    return df
+
+def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and preprocess the key card access data."""
+    # Create a copy only of the columns we need to modify
+    # This is more memory-efficient than df.copy()
+    result = pd.DataFrame()
+    
+    # Extract employee_id from 'User' column with improved regex
+    if 'User' in df.columns:
+        # Extract numeric ID and convert to numeric type - use vectorized operations
+        # Optimize with a more targeted regex
+        result['employee_id'] = pd.to_numeric(df['User'].str.extract(r'^(\d+)', expand=False), 
+                                           errors='coerce')
+        
+        print(f"\nEmployee ID extraction stats:")
+        print(f"Total rows: {len(df)}")
+        print(f"Rows with valid IDs: {result['employee_id'].notna().sum()}")
+        print(f"Rows without IDs: {result['employee_id'].isna().sum()}")
+    
+    # Optimize datetime parsing - if already parsed, don't parse again
+    if 'Date/time' in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df['Date/time']):
+            result['parsed_time'] = df['Date/time']
+        else:
+            # Use efficient vectorized parsing
+            result['parsed_time'] = pd.to_datetime(
+                df['Date/time'],
+                format="%d/%m/%Y %H:%M:%S",
+                dayfirst=True,
+                errors='coerce'
+            )
+    
+    # Create date_only from parsed_time using efficient vectorized operations
+    result['date_only'] = result['parsed_time'].dt.floor('d')
+    
+    # Add day of week
+    result['day_of_week'] = result['parsed_time'].dt.strftime('%A')
+    
+    # Copy only needed columns from original DataFrame to save memory
+    needed_columns = ['User', 'Where', 'Event', 'Details']
+    for col in needed_columns:
+        if col in df.columns:
+            result[col] = df[col]
+    
+    return result
+
+def clean_employee_info(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and preprocess the employee information."""
+    # Create a copy only of needed columns
+    result = pd.DataFrame()
+    
+    # Convert Employee # to employee_id and ensure it's numeric
+    result['employee_id'] = pd.to_numeric(df['Employee #'], errors='coerce')
+    
+    print("\nEmployee info stats:")
+    print(f"Total employees: {len(df)}")
+    print(f"Employees with valid IDs: {result['employee_id'].notna().sum()}")
+    print(f"Unique employee IDs: {result['employee_id'].nunique()}")
+    
+    # Convert date columns efficiently
+    date_columns = ['Hire Date', 'Original Hire Date', 'Resignation Date', 
+                   'Employment Status: Date']
+    for col in date_columns:
+        if col in df.columns:
+            result[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+            print(f"Converted {col} to datetime")
+    
+    # Add computed date columns
+    result = compute_combined_hire_date(result, df)
+    result = compute_most_recent_day_worked(result)
+    
+    # Copy other needed columns
+    needed_columns = ['Last name, First name', 'Working Status', 'Location', 
+                     'Division', 'Department', 'Employment Status']
+    for col in needed_columns:
+        if col in df.columns:
+            result[col] = df[col]
+    
+    # Clean up Working Status
+    if 'Working Status' in result.columns:
+        result['Working Status'] = result['Working Status'].str.strip()
+        print("\nUnique Working Status values:")
+        print(result['Working Status'].value_counts())
+    
+    return result
+
+def merge_key_card_with_employee_info(
+    key_card_df: pd.DataFrame,
+    employee_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Merge key card data with employee information using optimized approach."""
+    print("\nBefore merge:")
+    print("Key card shape:", key_card_df.shape)
+    print("Employee shape:", employee_df.shape)
+    
+    # Both DataFrames should have 'employee_id' column at this point
+    if 'employee_id' not in key_card_df.columns or 'employee_id' not in employee_df.columns:
+        raise KeyError("Both DataFrames must have 'employee_id' column")
+    
+    # Optimize: Only keep employee_df rows that have matching employee_ids in key_card_df
+    # This reduces the size of the right-side DataFrame in the merge
+    unique_ids_in_keycard = key_card_df['employee_id'].unique()
+    filtered_employee_df = employee_df[employee_df['employee_id'].isin(unique_ids_in_keycard)]
+    
+    print(f"Filtered employee DataFrame from {len(employee_df)} to {len(filtered_employee_df)} rows")
+    
+    # Merge the DataFrames
+    merged_df = pd.merge(
+        key_card_df,
+        filtered_employee_df,
+        on='employee_id',
+        how='left'
+    )
+    
+    print("After merge:")
+    print("Merged shape:", merged_df.shape)
+    
+    return merged_df
+
+def add_time_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add additional time-based analysis columns to the DataFrame."""
+    result = pd.DataFrame()
+    
+    # Ensure Date/time is datetime and extract hour efficiently
+    if pd.api.types.is_datetime64_any_dtype(df['Date/time']):
+        result['hour'] = df['Date/time'].dt.hour
+    else:
+        parsed_time = pd.to_datetime(df['Date/time'], dayfirst=True)
+        result['hour'] = parsed_time.dt.hour
+    
+    # Add time period categories using efficient categorization
+    result['time_period'] = pd.cut(
+        result['hour'],
+        bins=[-1, 9, 12, 14, 17, 24],
+        labels=['Early Morning', 'Morning', 'Lunch', 'Afternoon', 'Evening']
+    )
+    
+    return result
+
+==== END OF FILE: src/data_cleaning.py ====
+
+==== START OF FILE: src/data_ingestion.py ====
+import pandas as pd
+from pathlib import Path
+from datetime import datetime, timedelta
+
+def load_key_card_data(filepath: str, start_date: str = None, end_date: str = None, 
+                       last_n_days: int = None) -> pd.DataFrame:
+    """
+    Load key card CSV data with optional date filtering.
+    
+    Args:
+        filepath: Path to CSV file
+        start_date: Optional start date string in format 'YYYY-MM-DD'
+        end_date: Optional end date string in format 'YYYY-MM-DD'
+        last_n_days: If provided, load only the last N days of data
+        
+    Returns:
+        Filtered DataFrame with key card data
+    """
+    # Read only the first few rows to determine date format
+    sample = pd.read_csv(filepath, nrows=5)
+    
+    # Check if we have a Date/time column and determine format
+    if 'Date/time' in sample.columns:
+        # Determine if date format is day-first or month-first
+        # British format is typically day-first (e.g., 25/02/2025)
+        date_format = "%d/%m/%Y" if '/' in sample['Date/time'].iloc[0] else "%Y-%m-%d"
+        
+        # Read the date column and convert it to datetime for filtering
+        date_parser = lambda x: pd.to_datetime(x, format=f"{date_format} %H:%M:%S")
+        
+        # If date filtering is requested, use it
+        if start_date or end_date or last_n_days:
+            # If last_n_days is specified, calculate start_date
+            if last_n_days:
+                end_dt = datetime.now() if not end_date else pd.to_datetime(end_date)
+                start_dt = end_dt - timedelta(days=last_n_days)
+                start_date = start_dt.strftime("%Y-%m-%d")
+                end_date = end_date or datetime.now().strftime("%Y-%m-%d")
+            
+            # Read the CSV with chunk processing to filter by date
+            chunks = []
+            for chunk in pd.read_csv(filepath, chunksize=50000, parse_dates=['Date/time'], date_parser=date_parser):
+                # Convert to datetime if not already
+                if not pd.api.types.is_datetime64_any_dtype(chunk['Date/time']):
+                    chunk['Date/time'] = pd.to_datetime(chunk['Date/time'], format=f"{date_format} %H:%M:%S")
+                
+                # Apply date filter
+                if start_date:
+                    chunk = chunk[chunk['Date/time'] >= pd.to_datetime(start_date)]
+                if end_date:
+                    chunk = chunk[chunk['Date/time'] <= pd.to_datetime(end_date)]
+                
+                # Only append if there's data after filtering
+                if not chunk.empty:
+                    chunks.append(chunk)
+            
+            # Combine filtered chunks
+            if chunks:
+                return pd.concat(chunks, ignore_index=True)
+            else:
+                # Return empty DataFrame with correct columns if no data matches
+                return pd.DataFrame(columns=sample.columns)
+        
+    # If no date filtering or no date column, read the entire file
+    return pd.read_csv(filepath)
+
+def load_employee_info(filepath: str) -> pd.DataFrame:
+    """
+    Load employee info CSV data.
+    The important column here is 'Employee #'.
+    """
+    return pd.read_csv(filepath)
+
+def calculate_default_date_range(days=365):
+    """
+    Calculate default date range (last year)
+    
+    Args:
+        days: Number of days to look back (default: 365)
+    
+    Returns:
+        tuple: (start_date, end_date) as YYYY-MM-DD strings
+    """
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+
+if __name__ == "__main__":
+    # Example usage
+    base_path = Path(__file__).resolve().parent.parent  # go up one level from 'src'
+    key_card_path = base_path / "data" / "raw" / "key_card_access.csv"
+    employee_info_path = base_path / "data" / "raw" / "employee_info.csv"
+
+    # Example 1: Load all data
+    print("\nLoading all data:")
+    key_card_df = load_key_card_data(str(key_card_path))
+    print("Full key card shape:", key_card_df.shape)
+
+    # Example 2: Load last 30 days
+    print("\nLoading last 30 days:")
+    recent_df = load_key_card_data(str(key_card_path), last_n_days=30)
+    print("Recent key card shape:", recent_df.shape)
+
+    # Example 3: Load specific date range
+    print("\nLoading specific date range:")
+    start_date, end_date = calculate_default_date_range(days=90)
+    date_range_df = load_key_card_data(
+        str(key_card_path),
+        start_date=start_date,
+        end_date=end_date
+    )
+    print("Date range key card shape:", date_range_df.shape)
+
+    # Load employee info
+    employee_info_df = load_employee_info(str(employee_info_path))
+    print("\nEmployee info shape:", employee_info_df.shape)
+
+==== END OF FILE: src/data_ingestion.py ====
+
+==== START OF FILE: src/data_visualization.py ====
+import plotly.express as px
+
+def plot_arrival_distribution(df: pd.DataFrame):
+    fig = px.histogram(df, x='hour', nbins=24, title='Distribution of Arrival Times')
+    fig.show()  # or return fig if used in Streamlit / Dash
+
+==== END OF FILE: src/data_visualization.py ====
+
+== END OF PROJECT CODEBASE DUMP ==

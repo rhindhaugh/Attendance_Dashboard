@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: your-registry-url.com/attendance-dashboard
+  repository: docker.io/robhindhaugh/attendance-dashboard
   pullPolicy: Always
   tag: "latest"
 

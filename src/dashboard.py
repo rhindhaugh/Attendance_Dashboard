@@ -344,12 +344,13 @@ def main():
         st.success(f"Loaded {len(combined_df):,} records from {min_date.strftime('%d %b %Y')} to {max_date.strftime('%d %b %Y')}")
         
         # Create tabs and display data (keep existing tab code, but use analyses dict)
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "Daily Overview", 
             "Weekly Overview", 
             "Division Attendance",
             "Individual Employee Attendance",
-            "Employee Details"
+            "Employee Details",
+            "Daily Attendance Lookup"  # New tab for checking attendance by date
         ])
         
         with tab1:
@@ -842,6 +843,129 @@ def main():
                 file_name="employee_data.csv",
                 mime="text/csv"
             )
+        
+        with tab6:  # Daily Attendance Lookup tab
+            st.subheader("London Hybrid Full-Time Employee Daily Attendance")
+            st.write("Select a date to view attendance data for London-based Hybrid Full-Time employees on that day.")
+            
+            # Get min and max dates from the data
+            min_date = combined_df['date_only'].min()
+            max_date = combined_df['date_only'].max()
+            
+            # Date selector
+            selected_date = st.date_input(
+                "Select a date to view attendance:",
+                value=max_date.date(),  # Default to most recent date
+                min_value=min_date.date(),
+                max_value=max_date.date()
+            )
+            
+            # Get attendance data for the selected date
+            if selected_date:
+                date_info = pd.to_datetime(selected_date)
+                day_name = date_info.strftime("%A")
+                date_formatted = date_info.strftime("%d %B %Y")
+                
+                st.write(f"### Attendance for {day_name}, {date_formatted}")
+                
+                # Run attendance lookup
+                with st.spinner(f"Analyzing attendance data for {date_formatted}..."):
+                    try:
+                        from data_analysis import get_daily_employee_attendance
+                        
+                        # Create a deep copy to ensure we don't modify the original 
+                        debug_df = combined_df.copy(deep=True)
+                        
+                        # Ensure ALL columns have proper types for safe comparison
+                        if 'employee_id' in debug_df.columns:
+                            # Ensure employee_id is numeric - explicitly use float64 dtype
+                            debug_df['employee_id'] = pd.to_numeric(debug_df['employee_id'], errors='coerce').astype('float64')
+                        
+                        # Handle string columns consistently
+                        for col in ['Location', 'Working Status', 'Division', 'Department']:
+                            if col in debug_df.columns:
+                                debug_df[col] = debug_df[col].astype(str)
+                        
+                        # Handle date columns consistently
+                        for col in ['date_only', 'Combined hire date', 'Most recent day worked']:
+                            if col in debug_df.columns:
+                                debug_df[col] = pd.to_datetime(debug_df[col], errors='coerce')
+                        
+                        # Explicitly convert date_info to pandas Timestamp
+                        date_info = pd.to_datetime(date_info)
+                        
+                        # Add debugging output
+                        print(f"Data types before get_daily_employee_attendance:")
+                        print(debug_df.dtypes)
+                        print(f"Selected date: {date_info}, type: {type(date_info)}")
+                        
+                        daily_attendance = get_daily_employee_attendance(debug_df, date_info)
+                        
+                        if daily_attendance.empty:
+                            st.warning(f"No London-based Hybrid Full-Time employees found for {date_formatted}.")
+                    except Exception as e:
+                        st.error(f"Error analyzing attendance data: {str(e)}")
+                        # Log detailed error for debugging
+                        print(f"Detailed error in daily attendance lookup: {str(e)}")
+                        
+                        # Create an empty DataFrame as a fallback
+                        daily_attendance = pd.DataFrame(columns=[
+                            'employee_id', 'Employee Name', 'Working Status', 
+                            'Location', 'Division', 'Department', 'Attended', 'Arrival Time'
+                        ])
+                        st.warning("Using empty dataset due to error.")
+                    
+                    # Only proceed if we have data and no errors
+                    if not daily_attendance.empty:
+                        # Summary metrics
+                        total_employees = len(daily_attendance)
+                        attended_count = (daily_attendance['Attended'] == 'Yes').sum()
+                        attendance_rate = (attended_count / total_employees * 100) if total_employees > 0 else 0
+                        
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("London Hybrid FT Employees", f"{total_employees}")
+                        col2.metric("Employees Present", f"{attended_count}")
+                        col3.metric("Attendance Rate", f"{attendance_rate:.1f}%")
+                        
+                        # Filter controls
+                        st.write("### Employee Attendance Data")
+                        
+                        # Add filters for Division and Working Status
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if 'Division' in daily_attendance.columns:
+                                all_divisions = ['All Divisions'] + sorted(daily_attendance['Division'].unique().tolist())
+                                selected_division = st.selectbox("Filter by Division:", all_divisions)
+                        with col2:
+                            if 'Working Status' in daily_attendance.columns:
+                                all_statuses = ['All Statuses'] + sorted(daily_attendance['Working Status'].unique().tolist())
+                                selected_status = st.selectbox("Filter by Working Status:", all_statuses)
+                        
+                        # Apply filters
+                        filtered_data = daily_attendance.copy()
+                        if selected_division != 'All Divisions':
+                            filtered_data = filtered_data[filtered_data['Division'] == selected_division]
+                        if selected_status != 'All Statuses':
+                            filtered_data = filtered_data[filtered_data['Working Status'] == selected_status]
+                        
+                        # Display results
+                        if filtered_data.empty:
+                            st.warning("No employees match your filter criteria.")
+                        else:
+                            # Display columns
+                            display_columns = ['Employee Name', 'Division', 'Department', 'Working Status', 'Attended', 'Arrival Time']
+                            
+                            # Display without styling for now due to compatibility issue
+                            st.dataframe(filtered_data[display_columns], hide_index=True)
+                            
+                            # Add download option
+                            csv = filtered_data[display_columns].to_csv(index=False)
+                            st.download_button(
+                                label=f"Download Attendance Data for {date_formatted}",
+                                data=csv,
+                                file_name=f"london_attendance_{selected_date.strftime('%Y-%m-%d')}.csv",
+                                mime="text/csv"
+                            )
     
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")

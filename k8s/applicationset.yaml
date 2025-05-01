@@ -20,7 +20,7 @@
           helm:
             values: |
               image:
-                repository: docker.io/rhindhaugh/attendance-dashboard
+                repository: docker.io/robhindhaugh/attendance-dashboard
                 tag: latest
               ingress:
                 hosts:

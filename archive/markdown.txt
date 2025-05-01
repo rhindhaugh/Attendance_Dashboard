@@ -1,0 +1,4825 @@
+RH next steps for this doc
+Finish document ✅
+Create overview section ✅
+Create system prompt for an LLM to use this document ✅
+Add some context for KPI project ✅
+Create table of contents ✅
+Make sure instructions regarding motor queries are actually correct (e.g. I think a lot of them don’t actually factor in the need to use re-dash.) e.g. for now, I run motor
+Figure out where the data is stored. It is on snowflake too, and if I can run the queries all on the same place, that would make my life a lot easier. ALso ask someone on Motor what the exact purpose of redash is given the 
+Validate all queries and iterate ones that don’t work (started - continue tomorrow)
+Run them one at a time to do so. 
+Build out Appendix A (important column IDs)
+Potentially restructure to optimise for LLM referencing (given limited context could helpful to have an LLM specific instruction manual that helps to efficiently search for the relevant info/context)
+Re-work structure of the appendices
+Cross-reference current SQL queries from KPI spreadsheet 
+Comprehensive Lendable Database Architecture Technical Reference
+Purpose and Scope
+This comprehensive technical reference document maps Lendable's entire database architecture across all products, regions, and systems. It serves as an authoritative guide to navigating the complex data ecosystem that underpins Lendable's operations, including UK and US markets across personal loans, credit cards, auto finance, and the recently launched Super App. The document provides detailed insights into database systems, data structures, transformation processes, and access patterns required to effectively retrieve and analyze business-critical information.
+The reference is structured to provide both high-level architectural understanding and detailed technical specifications. It begins with a system-wide overview of Lendable's database platforms (Snowflake, Redash/autolend) and their interrelationships, progresses through the core data architecture including transformation layers (Raw → Staging → Integration → Mart → Presentation), and then provides product-specific data models for each business line. The document also covers cross-product data assets that enable unified customer views and concludes with technical implementation guidance including query optimization strategies and data quality considerations.
+Throughout this reference, you'll find specific table statistics, row counts, key identifiers, and sample queries designed to address common business questions. The documentation includes detailed mappings from database to schema to table to column for all key systems, ensuring comprehensive coverage of Lendable's data landscape. Special attention is given to cross-database relationships and integration points, clarifying how to join data across disparate systems when necessary. Common pitfalls, interpretation challenges, and data quality issues are highlighted to ensure accurate analyses.
+This technical reference is designed to enable precise data retrieval and analysis without requiring additional context about Lendable's database structure. Whether you're constructing SQL queries, designing reports, or investigating data relationships, this document provides the necessary context to navigate Lendable's data ecosystem efficiently and accurately.
+Connection to KPI Dashboard Project
+This database architecture documentation directly supports Lendable's strategic initiative to establish a comprehensive, cross-company KPI dashboard that transcends individual product lines. As Lendable continues its expansion across markets (UK, US, and planned expansion into Mexico) and products (loans, credit cards, auto finance, and the Super App), accessing consistent, accurate data across these dimensions becomes increasingly challenging. The detailed mapping of database structures, table relationships, and access patterns provided in this document enables the reliable extraction of the 45 specific metrics identified across nine key categories for the KPI dashboard, including growth/scale, data/AI advantage, operational efficiency, financial performance, customer engagement, risk management, funding capacity, product innovation, and market position. With a robust understanding of Lendable's database architecture, teams can ensure consistent calculation methodologies across business units, properly integrate Super App metrics with traditional product data, and develop metrics that highlight Lendable's AI/data advantage as a key differentiator – all while maintaining the ability to tell both the growth story and profitability narrative that have been central to Lendable's success since achieving profitability in 2017.
+Document overview
+Table of Contents
+—————————————————————————————————————————
+1. Database Systems Overview
+1.1 Primary Database Platforms
+1.1.1 Snowflake Data Warehouse
+1.1.2 Redash/autolend.lendable System 1.2 Data Integration Mechanisms
+1.2.1 ETL Processes
+1.2.2 Data Flow Architecture
+1.2.3 Cross-System Integration Points 1.3 Naming Conventions & Patterns
+1.3.1 Schema Layer Prefixes
+1.3.2 Table Prefixes
+1.3.3 Table Suffixes
+1.3.4 Other Common Patterns 1.4 UK vs US Data Environments
+1.4.1 UK Environment
+1.4.2 US Environment 1.5 Navigating the Database Structure
+1.5.1 Discovering Database Objects
+1.5.2 Quick Table Statistics
+1.5.3 Schema Layer Exploration
+2. Core Data Architecture
+2.1 Raw Data Sources & Structure
+2.1.1 Cards Source Data
+2.1.2 Loans Source Data
+2.1.3 State and Historical Data Management 2.2 Data Transformation Layers
+2.2.1 Raw Layer
+2.2.2 Staging Layer (STG_)
+2.2.3 Integration Layer (INT_)
+2.2.4 Mart Layer (MRT_)
+2.2.5 Presentation Layer (PRS_) 2.3 Table Statistics & Key Identifiers
+2.3.1 Cards Schema Volumes
+2.3.2 Loans Schema Volumes
+2.3.3 Open Banking Schema Volumes
+2.3.4 Growth Schema Volumes
+2.3.5 Key Identifiers 2.4 Cross-Database Relationships
+2.4.1 Cross-Product Customer View
+2.4.2 Cards-to-Loans Relationships
+2.4.3 Snowflake-to-PostgreSQL Integration 2.5 Common Pitfalls and Interpretation Issues
+2.5.1 State and Status Tracking
+2.5.2 Income Verification
+2.5.3 Credit Decisioning
+2.5.4 Transaction Data
+2.5.5 Query Performance Optimization Strategies
+3. Product Data Models
+3.1 Cards (UK)
+3.1.1 Application Process
+3.1.2 Account Management
+3.1.3 Transactions
+3.1.4 Credit Decisions
+3.1.5 Open Banking Integration
+3.1.6 Account Lifecycle Management Tables 3.2 Loans (UK)
+3.2.1 Application and Origination Process
+3.2.2 Account Servicing
+3.2.3 Collections
+3.2.4 Credit Decisioning
+3.2.5 Field Definitions for Key Metrics 3.3 Motor Finance/Auto Lending (UK)
+3.3.1 Autolend.lendable Schema Structure
+3.3.2 Key Auto Loan Origination Tables
+3.3.3 Vehicle Data Tables
+3.3.4 Snowflake Integration
+3.3.5 Field Mappings for Consistent Reporting 3.4 Super App
+3.4.1 Data Structure for the Mobile Application
+3.4.2 Cross-Product Integration Points
+3.4.3 User Activity and Engagement Tracking 3.5 Product Comparison Matrix
+4. Cross-Product Data Assets
+4.1 Customer Identity
+4.1.1 Identity Resolution
+4.1.2 Customer Profiles 4.2 Marketing and Acquisition
+4.2.1 Channel Tracking
+4.2.2 Campaign Performance
+4.2.3 Attribution 4.3 Open Banking Infrastructure
+4.3.1 Transaction Categorization
+4.3.2 Consent Management
+4.3.3 Data Utilization 4.4 Risk and Compliance
+4.4.1 Fraud Detection
+4.4.2 AML Monitoring
+4.4.3 Vulnerability Tracking
+5. Technical Implementation Details
+5.1 Query Optimization Strategies
+5.1.1 Table Size Considerations
+5.1.2 Layer Selection 5.2 Sample Queries for Common Business Questions
+5.2.1 Total Originations by Product, Time Period, and Geography
+5.2.2 Customer Acquisition and Portfolio Growth Metrics
+5.2.3 Performance Metrics by Product, Segment, and Channel 5.3 How to Accurately Filter and Join Complex Table Relationships
+5.3.1 Cards Product Relationships
+5.3.2 Loans Product Relationships
+5.3.3 Motor Finance Relationships
+5.3.4 Cross-Product Relationships 5.4 Warnings about Data Quality Issues and Limitations
+5.4.1 State and Status Ambiguity
+5.4.2 Income Verification Considerations
+5.4.3 Cross-Database Query Limitations
+5.4.4 Historical Data Retention 5.5 Data Testing and Quality Assurance
+5.5.1 Referential Integrity Checks
+5.5.2 Data Reconciliation Checks
+5.5.3 Data Quality Metrics
+6. Data Export and Integration Guidelines
+6.1 Exporting Data for Analysis
+6.1.1 Recommended File Formats
+6.1.2 Extract Patterns for Large Datasets 6.2 Third-Party Tool Integration
+6.2.1 Business Intelligence Tools
+7. US Operations Database Architecture
+7.1 Accessing US Data vs. UK Data
+7.1.1 UK Data Access
+7.1.2 US Data Access 7.2 US Database Systems Overview
+7.2.1 Primary Database Platforms
+7.2.2 Naming Conventions & Patterns 7.3 US Loans Product Data Model
+7.3.1 Core Tables
+7.3.2 Loan Application Data Model
+7.3.3 Analytics and Reporting Infrastructure 7.4 US Cards Product Data Model
+7.4.1 Core Tables
+7.4.2 Card Account Data Model
+7.4.3 Peach Banking Platform Integration
+7.4.4 Transaction Data and Open Banking
+7.4.5 Test Account Management 7.5 Cross-Schema Relationships in US Operations
+7.5.1 Schema Hierarchy
+7.5.2 Cross-Schema Joins
+7.5.3 Schema Navigation Tips 7.6 US Market Operational Model
+7.6.1 Partner Bank Structure
+7.6.2 Third-Party Service Integrations
+7.6.3 Marketing Partner Ecosystem
+7.6.4 Integration with UK Systems 7.7 Credit Risk and Data Science Infrastructure
+7.7.1 US-Specific Credit Models
+7.7.2 Performance Tracking
+7.7.3 Risk Management Flags 7.8 Query Patterns for US Data Access
+7.8.1 Origination Reporting
+7.8.2 Pricing Metrics
+7.8.3 US Cards Portfolio Balance Reporting
+7.8.4 US Cards Revenue Analysis
+7.8.5 US Cards Application Funnel Analysis 7.9 US Data Access Tools
+7.9.1 Superset
+7.9.2 Direct Snowflake Access
+7.9.3 Metadata Integration 7.10 Summary of US Database Architecture
+7.10.1 Key Architectural Components
+7.10.2 Product Coverage
+7.10.3 Data Integration Points
+7.10.4 Analytical Capabilities
+7.10.5 Considerations for SQL Development 7.11 Data Quality Considerations for US Operations
+7.11.1 Test Account Filtering
+7.11.2 Recent Product Launch Effects
+7.11.3 Table Sizing and Query Performance
+7.11.4 Data Exclusion Patterns 7.12 Differences Between US and UK Data Models
+7.12.1 Structural Differences
+7.12.2 Common Patterns
+7.12.3 Query Approach Differences 7.13 US Data Architecture Evolution
+7.13.1 Database Architecture
+7.13.2 Data Transformation Process
+7.13.3 Future Expansion Considerations
+8. Security & Compliance Infrastructure
+8.1 Vulnerability Management
+8.1.1 Vulnerability Tracking
+8.1.2 Vulnerability Classification 8.2 Fraud & AML
+8.2.1 Fraud Management
+8.2.2 AML Monitoring
+9. Credit Decisioning & Underwriting Infrastructure
+9.1 Multiple Credit Bureau Integration
+9.1.1 Bureau Integration Tables 9.2 Proprietary Scoring Models
+9.2.1 Model Suite
+9.2.2 Score Components
+9.2.3 Model Monitoring 9.3 Balance Sheet vs. Marketplace Lending
+9.3.1 Lending Type Distinction
+9.3.2 Investor Management
+Appendices
+Appendix A: Data Dictionary for Key Tables
+A.1 Cards Product Key Tables
+A.2 Loans Product Key Tables
+A.3 Motor Finance Key Tables
+Appendix B: Query Examples Library for Common Business Questions
+B.1 Customer Acquisition and Growth
+B.2 Portfolio Performance
+B.3 Risk Management
+B.4 Cross-Product Analysis
+B.5 Operational Metrics
+B.6 Regulatory Reporting
+B.7 System-Specific Query Patterns
+B.8 Advanced Cross-Schema Examples
+B.9 Data Quality Validation Queries
+Appendix C: Enhanced Data Dictionary
+C.1 Cards Product Tables
+C.2 Loans Product Tables
+C.3 Motor Finance Tables
+C.4 Open Banking Tables
+C.5 Marketing and Growth Tables
+C.6 US Operations Tables
+C.7 Common Identifiers and Relationships
+C.8 Status and State Values
+C.9 Common Flags and Indicators
+Appendix D: System-Specific Instructions for Database Queries
+D.1 Identifying the Correct System
+D.2 Snowflake System (UK) Query Patterns
+D.3 Superset System (US) Query Patterns
+D.4 Key Syntax Differences
+D.5 Special VPN Considerations
+D.6 Best Practices for System-Specific Queries
+D.7 Additional Resources
+D.8 Decision Trees for System Selection
+D.9 Common Query Templates
+Appendix E: Database Architecture Diagram
+Appendix F: Example LLM System Prompt
+Glossary
+—————————————————————————————————————————
+1. Database Systems Overview
+1.1 Primary Database Platforms
+Lendable's data architecture spans multiple separate systems that work together to provide a comprehensive view of all products:
+1.1.1 Snowflake Data Warehouse
+The primary enterprise data warehouse containing transformed, reporting-ready data across most products:
+PROD Database: Contains the mart layer (MRT_*) schemas with business-ready data
+MRT_CARDS: UK Cards product data (Accounts, Applications, Transactions)
+MRT_LOANS: UK Loans product data (Loan applications, Loans, Repayments)
+MRT_OPENBANKING: Cross-product Open Banking data
+MRT_GROWTH: Marketing and growth analytics data
+MRT_MOTOR: References and summary data for Motor Finance
+RAW_PRODUCTION Database: Source system data with minimal transformation
+CARDS_UK_*: Raw Cards product data (Transactions, Admin, Applications, etc.)
+LOANS_UK_*: Raw Loans product data
+LOANS_AND_MOTORS_UK_*: Shared Loans and Motor Finance data
+RAW_MISC Database: Miscellaneous data sources and utilities
+Various supporting datasets
+Temporary and utility schemas
+CARDS_UK_MANUAL_UPLOAD database: Likely for manual data imports
+SNOWFLAKE database: System tables
+1.1.2 Redash/autolend.lendable System
+Dedicated PostgreSQL system for Motor Finance (auto loans):
+Contains schemas like hirepurchaseloan, account, accountbalance, affordabilitydetail
+Operates independently from Snowflake
+Critical source for auto finance KPIs and metrics
+Has its own database model and structure
+1.2 Data Integration Mechanisms
+1.2.1 ETL Processes
+Fivetran: Used for ETL processes, indicated by _fivetran_deleted flags in many tables
+dbt: Used for data transformation, evidenced by DBT_RUNS and SRC_DBT_RUNS schemas
+Implements consistent transformation patterns across data layers
+Tracks transformation jobs and lineage
+1.2.2 Data Flow Architecture
+Source to Raw: External systems → RAW_PRODUCTION in Snowflake
+Raw to Staging: RAW_PRODUCTION → STG_ schemas (light transformation)
+Staging to Integration: STG_ → INT_ schemas (business rules applied)
+Integration to Mart: INT_ → MRT_ schemas (reporting-ready data)
+Mart to Presentation: MRT_ → PRS_ schemas (business-specific views)
+1.2.3 Cross-System Integration Points
+Motor Finance Integration: Redash/autolend data is likely extracted, loaded into Snowflake for cross-product reporting
+Open Banking Infrastructure: Acts as a unifying layer across products via MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING
+Customer Identity Resolution: Cross-product customer identification via common identifiers or hashed fields
+1.3 Naming Conventions & Patterns
+1.3.1 Schema Layer Prefixes
+STG_: Staging layer (source aligned, minimal transformation)
+INT_: Integration layer (combining sources, applying business rules)
+MRT_: Mart layer (reporting-ready data, business entities)
+PRS_: Presentation layer (business-specific views)
+1.3.2 Table Prefixes
+MRT__: Indicates mart-level tables
+INT__: Indicates integration-level tables
+STG__: Indicates staging-level tables
+1.3.3 Table Suffixes
+__CARDS: Cards product tables
+__LOANS: Loans product tables
+__MOTOR: Motor Finance tables
+__OPENBANKING: Open Banking tables
+__GROWTH: Marketing and growth tables
+1.3.4 Other Common Patterns
+Temporary schemas often have _TEMP or date-based suffixes
+Backup schemas may have _OLD or _OLD_2024 patterns
+Test schemas may have _TEST or _QA suffixes
+1.4 UK vs US Data Environments
+The database architecture has distinct environments for UK and US operations:
+1.4.1 UK Environment (Primary Data Sources)
+Clear schema organization with UK naming patterns
+Mature data architecture with established ETL patterns
+Comprehensive product coverage (Cards, Loans, Motor)
+1.4.2 US Environment (Referenced but Not Fully Explored)
+Likely separate database instances for US operations
+May follow similar naming conventions but with US patterns
+Newer implementation (cards launched more recently in US)
+Potentially accessed through Superset rather than directly in Snowflake
+1.5 Navigating the Database Structure
+The following reference queries can be used to explore Lendable's database structure:
+1.5.1 Discovering Database Objects
+sql
+Copy
+-- List all databases
+SHOW DATABASES;
+
+-- List all schemas in the PROD database
+SHOW SCHEMAS IN DATABASE PROD;
+
+-- List all schemas in the RAW_PRODUCTION database
+SHOW SCHEMAS IN DATABASE RAW_PRODUCTION;
+
+-- List all tables in the MRT_CARDS schema
+SHOW TABLES IN SCHEMA PROD.MRT_CARDS;
+
+-- List all tables in the MRT_LOANS schema
+SHOW TABLES IN SCHEMA PROD.MRT_LOANS;
+
+-- View column definitions for the accounts table
+DESCRIBE TABLE PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+1.5.2 Quick Table Statistics
+sql
+Copy
+SELECT
+  'MRT__ACCOUNTS__CARDS' AS table_name,
+  COUNT(*) AS row_count
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+UNION ALL
+SELECT
+  'MRT__TRANSACTIONS__CARDS' AS table_name,
+  COUNT(*) AS row_count
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+UNION ALL
+SELECT
+  'MRT__LOAN__LOANS' AS table_name,
+  COUNT(*) AS row_count
+FROM PROD.MRT_LOANS.MRT__LOAN__LOANS;
+
+1.5.3 Schema Layer Exploration
+sql
+Copy
+SELECT
+  table_catalog AS database_name,
+  table_schema AS schema_name,
+  table_name,
+  row_count
+FROM PROD.INFORMATION_SCHEMA.TABLES
+WHERE table_schema LIKE 'MRT_%'
+ORDER BY table_schema, table_name;
+
+
+-- Find all tables in the STG (Staging) layer across schemas
+SELECT
+  table_catalog AS database_name,
+  table_schema AS schema_name,
+  table_name,
+  row_count
+FROM PROD.INFORMATION_SCHEMA.TABLES
+WHERE table_schema LIKE 'STG_%'
+ORDER BY table_schema, table_name;
+2. Core Data Architecture
+2.1 Raw Data Sources & Structure
+Raw source data for core products is stored in specific schemas:
+2.1.1 Cards Source Data
+RAW_PRODUCTION.CARDS_UK_TRANSACTIONS__TRANSACTIONS
+RAW_PRODUCTION.CARDS_UK_ADMIN__ADMIN
+RAW_PRODUCTION.CARDS_UK_APPLICATIONS__APPLICATIONS
+RAW_PRODUCTION.CARDS_UK_BILLING__BILLING
+RAW_PRODUCTION.CARDS_UK_ACCOUNTS__ACCOUNTS
+2.1.2 Loans Source Data
+RAW_PRODUCTION.LOANS_UK_LENDABLE.loan (critical source table for loan originations)
+RAW_PRODUCTION.LOANS_AND_MOTORS_UK_LENDABLE.UNDERWRITINGRULE (underwriting rules)
+Various schemas tracking different aspects like LOANS_UK_ARREARS, LOANS_UK_CREDIT
+2.1.3 State and Historical Data Management
+Multiple versions of schemas exist for certain products (particularly loans)
+Various temporary, backup and versioned schemas exist (e.g., *_TEMP, *_OLD, *_OLD_2024)
+Time-based audit tables capture historical changes
+2.2 Data Transformation Layers
+Lendable follows a multi-layer transformation approach:
+2.2.1 Raw Layer
+Contains source system data with minimal modifications
+Maintains original structure from source systems
+Preserved for data lineage and auditing
+2.2.2 Staging Layer (STG_)
+Light transformations applied
+Basic data type conversions and standardization
+Aligned to source system structure
+2.2.3 Integration Layer (INT_)
+Business rules applied
+Combines data from multiple source systems
+Resolves conflicts and implements business logic
+2.2.4 Mart Layer (MRT_)
+Reporting-ready data
+Organized around business entities
+Optimized for analytical queries
+2.2.5 Presentation Layer (PRS_)
+Business-specific views
+Customized for specific reporting needs
+May include pre-calculated metrics
+2.3 Table Statistics & Key Identifiers
+Key data volumes and identifiers across major schemas:
+2.3.1 Cards Schema Volumes
+MRT__APPLICATIONS__CARDS: 180M rows
+MRT__ACCOUNTS__CARDS: 1M rows
+MRT__TRANSACTIONS__CARDS: 159M rows
+MRT__CASHFLOW_EVENTS__CARDS: 227M rows
+MRT__MARQETA_WEBHOOK_EVENTS__CARDS: 404M rows
+2.3.2 Loans Schema Volumes
+MRT__LOANAPPLICATION_METADATA__LOANS: 382M rows
+MRT__LOANAPPLICATION_USERS__LOANS: 23M rows
+MRT__LOAN__LOANS: 1.3M rows
+MRT__REPAYMENT__LOANS: 26M rows
+MRT__DAILY_COLLECTIONS_FLAGS__LOANS: 718M rows
+MRT__DECISION_MATRIX_RESULT__LOANS: 466M rows
+MRT__MODEL_SCORES__LOANS: 65M rows
+2.3.3 Open Banking Schema Volumes
+MRT__ACCOUNTS__OPENBANKING: 422K rows
+MRT__TRANSACTIONS__OPENBANKING: 27.7B rows
+MRT__DATA_PULL_SUMMARY__OPENBANKING: 17.7M rows
+MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING: 226K rows
+2.3.4 Growth Schema Volumes
+MRT__USER_PROPERTIES__GOOGLE_ANALYTICS: 419M rows
+MRT__EVENTS__GOOGLE_ANALYTICS: 419M rows
+MRT__SESSION_LOANS_REPORTING__GROWTH: 581M rows
+MRT__CUSTOMER_MARKETING_RIGHTS__GROWTH: 3.8M rows
+MRT__BLUESHIFT_USER_ID_EMAIL_CAMPAIGN_ACTIVITY__GROWTH: 3.1M rows
+2.3.5 Key Identifiers
+APPLICATION_ID: Used across Cards and Loans for application tracking
+ACCOUNT_ID: Primary identifier for Cards accounts
+ACCOUNT_NUMBER: Alternative ID format for Cards
+LOAN_ID: Primary identifier for Loans
+vehicle_id: Primary identifier for Motor Finance vehicles
+hirepurchaseloan.id: Primary identifier for Motor Finance loans
+2.4 Cross-Database Relationships
+How to join across the disparate systems:
+2.4.1 Cross-Product Customer View
+Infrastructure exists for unified customer view:
+Customer marketing rights
+Customer OB consent
+Cross-product application linking
+2.4.2 Cards-to-Loans Relationships
+Common customer identifiers allow tracking customers across products
+Hashed personally identifiable information (PII) fields like:
+EMAIL_HASH
+MOBILE_NUMBER_HASH
+DATE_OF_BIRTH_HASH
+NAME_HASH variants
+2.4.3 Snowflake-to-PostgreSQL Integration
+For queries spanning products (e.g., customers with both Cards and Motor Finance):
+Cross-reference using common customer identifiers between:
+lendable.user_id in the Autolend database
+MRT__ACCOUNTS__CARDS.APPLICATION_ID or similar in Snowflake
+Extract data from both systems separately and join in the reporting layer, as direct cross-database queries aren't supported
+2.5 Common Pitfalls and Interpretation Issues
+2.5.1 State and Status Tracking
+Account status may change over time - use appropriate historical tables
+Multiple status fields may exist for different purposes
+Status values may have different meanings across products
+2.5.2 Income Verification
+Income data may come from multiple sources
+Check NET_MONTHLY_INCOME_SOURCE for validation
+Different processing depending on IS_OB_INCOME_VERIFIED flag
+2.5.3 Credit Decisioning
+Credit scores exist across multiple models - be specific about which model score is needed
+Multiple Credit Bureau data sources (Experian, TransUnion, Equifax)
+Raw vs. scaled scores have different interpretations
+2.5.4 Transaction Data
+Transaction data is split between regular transactions and cashflow events - both may be needed for complete analysis
+Different transaction types have different business meanings
+2.5.5 Query Performance Optimization Strategies
+When querying large tables (particularly those over 100M rows), consider these best practices:
+Filter by Date First: Always include date filters before joining large tables
+Example:
+sql
+Copy
+SELECT * FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t
+WHERE t.OCCURRED_AT BETWEEN '2023-01-01' AND '2023-01-31'
+AND t.ACCOUNT_ID = '12345';
+Join Order Matters: Join from smaller to larger tables
+Example:
+sql
+Copy
+SELECT a.ACCOUNT_ID, COUNT(t.ID) AS transaction_count
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a -- smaller table
+LEFT JOIN PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t -- larger table
+ON a.ACCOUNT_ID = t.ACCOUNT_ID
+WHERE a.OPENED_AT > '2023-01-01'
+GROUP BY a.ACCOUNT_ID;
+Use Appropriate Aggregations: Pre-aggregate data when possible
+Example:
+sql
+Copy
+-- Instead of this:
+SELECT ACCOUNT_ID, SUM(amount)
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+WHERE OCCURRED_AT BETWEEN '2022-01-01' AND '2023-12-31'
+GROUP BY ACCOUNT_ID;
+
+-- Consider this if available:
+SELECT ACCOUNT_ID, SUM(monthly_spend)
+FROM PROD.MRT_CARDS.MRT__MONTHLY_ACCOUNT_METRICS__CARDS
+WHERE month BETWEEN '2022-01-01' AND '2023-12-01'
+GROUP BY ACCOUNT_ID;
+3. Product Data Models
+3.1 Cards (UK)
+3.1.1 Application Process
+The Cards product application process is tracked primarily through:
+MRT__APPLICATIONS__CARDS (180M rows)
+Key fields:
+APPLICATION_ID: Primary identifier
+STATE: Current application state
+CREATED_AT: Application submission timestamp
+CREDIT_LIMIT: Approved credit limit
+IS_OB_INCOME_VERIFIED: Open Banking income verification flag
+Geographic data:
+IP_ADDRESS: Applicant's IP address
+ADDRESS_CHANGED: Address change indicator
+Credit scores: Multiple models tracked:
+Gemini
+Overlay
+Lyra
+Hinton
+Argus
+Level
+3.1.2 Account Management
+Card accounts are managed through:
+MRT__ACCOUNTS__CARDS (1M rows)
+Customer Identity:
+ACCOUNT_NUMBER: Unique identifier for the card account
+ACCOUNT_ID: Alternative ID format used across systems
+APPLICATION_ID: Links to the original application
+GIVEN_NAME_HASH, FAMILY_NAME_HASH, DATE_OF_BIRTH_HASH, MOBILE_NUMBER_HASH, EMAIL_HASH: Hashed personal identifiers for privacy/security
+Account Status:
+OPENED_AT: Timestamp of account opening
+DATE_SOLD: When applicable, date account was sold
+STATE: Current account state (e.g., 'active', 'closed')
+CLOSED_AT: Timestamp of account closure
+PAYING_DOWN_STARTED_AT: When the account entered paying down status
+Credit Terms:
+INITIAL_CREDIT_LIMIT: Starting credit limit in currency units
+INITIAL_APR: Initial Annual Percentage Rate
+CREDIT_AGREEMENT_ACCEPTED_AT: When customer accepted terms
+CREDIT_AGREEMENT_VERSION: Version of agreement accepted
+Address Information:
+ADDRESS_*_HASH: Various hashed address components
+POST_CODE_REGION: Region derived from postal code
+NUTS_1_CLASSIFICATION: Standard geographic classification
+Credit Scoring: Multiple scoring models tracked with raw scores, scaled scores, binning information:
+Gemini model: GEMINI_SCORE_RAW, GEMINI_SCORE_SCALED, etc.
+Overlay model: OVERLAY_SCORE_RAW, OVERLAY_SCORE_SCALED, etc.
+Lyra model: LYRA_SCORE_RAW, LYRA_SCORE_SCALED, etc.
+Hinton model: HINTON_SCORE_RAW, HINTON_SCORE_SCALED, etc.
+Argus model: ARGUS_SCORE_RAW, ARGUS_SCORE_SCALED, etc.
+Level model: LEVEL_MODEL_SCORE_RAW, LEVEL_MODEL_SCORE_SCALED, etc.
+Income Verification:
+NET_MONTHLY_INCOME_AMOUNT: Declared monthly income
+NET_MONTHLY_INCOME_SOURCE: Source of income data
+APPLICATION_DECLARED_INCOME: Income stated during application
+APPLICATION_DECISION_INCOME: Income used for decision
+DECISION_INCOME_SOURCE: Source of decision income
+Marketing & Acquisition:
+SOURCE: Customer acquisition channel
+Various scalar fields capturing channel-specific weights:
+CREDITKARMA_SCALAR, CREDABILITY_SCALAR, EXPERIAN_SCALAR
+MSM_SCALAR, TOTALLYMONEY_SCALAR, DIRECT_SCALAR
+Open Banking:
+FLAG_OB_PA_QUOTE, FLAG_OB_NPA_QUOTE: Open Banking flags
+Special Features:
+INSTANT_SPEND_ELIGIBLE: Eligibility for instant spending
+INSTANT_SPEND_STATUS: Status of instant spend capability
+ACTIVE_FRAUD_TAG: Indicates potential fraud
+Geographic data:
+ADDRESS_POST_CODE_HASH
+POST_CODE_REGION
+ADDRESS_LOCALITY_HASH
+3.1.3 Transactions
+Card transactions and activities are tracked through:
+MRT__TRANSACTIONS__CARDS (159M rows)
+Contains individual purchase and payment transactions
+Linked to accounts via ACCOUNT_ID
+MRT__CASHFLOW_EVENTS__CARDS (227M rows)
+Records financial events affecting account balances
+Different event types track various account activities
+MRT__MARQETA_WEBHOOK_EVENTS__CARDS (404M rows)
+Contains merchant data:
+MERCHANT_CITY
+MERCHANT_COUNTRY
+3.1.4 Credit Decisions
+Credit decisions for Cards are managed through multiple tables tracking different scoring models:
+INT__EXPERIAN_DECISION_RESPONSES__CARDS
+Experian credit bureau data and decisions
+INT__TU_DECISION_RESPONSES__CARDS
+TransUnion credit bureau data and decisions
+Score Models Multiple scoring models are used with varying weights:
+Gemini model
+Overlay model
+Lyra model
+Hinton model
+Argus model
+Level model
+Each model has:
+Raw scores (*_SCORE_RAW)
+Scaled scores (*_SCORE_SCALED)
+Binning information
+Cutoffs
+Decline flags
+PSI Monitoring
+Population Stability Index tracking tables for models
+PSI data at bin level and overall level
+Tracked weekly and monthly
+3.1.5 Open Banking Integration
+Open Banking is integrated into the Cards product through:
+Open Banking Flags
+IS_OB_INCOME_VERIFIED
+IS_OB_PREAPPROVAL
+IS_OB_EXPANSION
+Rules Table
+INT__CLE_OPEN_BANKING_RULES__CARDS
+Integration Points
+Income verification
+Pre-approval process
+Credit limit expansion
+3.1.6 Account Lifecycle Management Tables
+Several tables track different aspects of the account lifecycle, all connected via ACCOUNT_ID:
+Credit Limit Management
+MRT__CLI_HISTORY__CARDS: History of credit limit increases
+MRT__CLI_OFFERS__CARDS: Credit limit increase offers made to customers
+MRT__CREDIT_LIMIT_EVALUATION__CARDS: Evaluation results for credit limit changes
+MRT__CREDIT_LIMIT_EVALUATION_RULES__CARDS: Rules applied during evaluation
+Account Status Tracking
+MRT__ARREARS_STATUS_CHANGES__CARDS: Records of accounts entering/exiting arrears
+MRT__DEFAULT_HISTORY__CARDS: Default events history
+MRT__INSOLVENCY_HISTORY__CARDS: Customer insolvency records
+MRT__WRITTEN_OFF_HISTORY__CARDS: History of written-off accounts
+MRT__VULNERABILITY_HISTORY__CARDS: Tracking of vulnerable customer status
+Customer Management
+MRT__CUSTOMER_ACCOUNT_ATTRIBUTES__CARDS: Additional customer attributes
+MRT__ACCOUNT_TAGS__CARDS_CUSTOMERS: Tags associated with accounts
+MRT__PREFERENCES__CARDS: Customer preferences
+Financial Product Features
+MRT__BALANCE_TRANSFER_CARD_DETAILS__CARDS: Balance transfer card info
+MRT__BALANCE_TRANSFER_TRANSACTION__CARDS: Balance transfer transactions
+MRT__BALANCE_TRANSFER_PROMOTIONAL_PERIOD__CARDS: Promotional periods for balance transfers
+Collections & Debt Management
+MRT__CHARGE_OFFS__CARDS: Charge-off records
+MRT__DMP_HISTORY__CARDS: Debt Management Plan history
+MRT__PAYMENT_PLAN_HISTORY__CARDS: Payment plan arrangements
+Investor Management
+MRT__INVESTOR_PURCHASES__CARDS: Records of investor loan purchases
+MRT__INVESTOR_BALANCES_DISTRIBUTIONS__CARDS: Investor balance and distribution data
+3.2 Loans (UK)
+3.2.1 Application and Origination Process
+The Loans application process is tracked through:
+MRT__LOANAPPLICATION_METADATA__LOANS (382M rows)
+Tracking application lifecycle and metadata
+MRT__LOANAPPLICATION_USERS__LOANS (23M rows)
+Geographic data:
+POSTCODE: Applicant's postal code
+Decisioning Tables
+MRT__MODEL_SCORES__LOANS (65M rows): Credit model scoring results
+MRT__DECISION_MATRIX_RESULT__LOANS (466M rows): Decision matrix outcomes
+MRT__DECISION_RULE_RESULTS__LOANS: Individual rule results
+3.2.2 Account Servicing
+Loan accounts and repayments are managed through:
+MRT__LOAN__LOANS (1.3M rows)
+Primary table for active and historical loans
+Contains loan terms, amounts, statuses
+MRT__REPAYMENT__LOANS (26M rows)
+Tracks all repayment transactions
+Records payment amounts, dates, methods
+MRT__ACCOUNT_TRANSACTION__LOANS
+Records account-level transactions
+Provides transaction history for loan accounts
+MRT__PAYMENTDAY_CHANGES__LOANS
+Tracks changes to scheduled payment dates
+Records history of payment date modifications
+3.2.3 Collections
+Delinquency management is handled through:
+MRT__DAILY_COLLECTIONS_FLAGS__LOANS (718M rows)
+Daily snapshot of collections status
+MRT__DELINQUENCY_DATES__LOANS
+Tracks important delinquency milestones
+Collections Stages
+MRT__FIRST_TIME_ENTERED_EARLY_LATE_STAGE_COLLECTIONS__LOANS
+Tracks transitions between collections stages
+Payment Plans
+MRT__REPAYMENT_PAYMENTPLANINSTANCE__LOANS
+Records payment plan arrangements
+Debt Management
+MRT__REPAYMENT_DEBTMANAGEMENTPLAN__LOANS
+Tracks formal debt management plans
+Insolvency
+MRT__REPAYMENT_INSOLVENCY__LOANS
+MRT__INSOLVENCY_LATEST__LOANS
+Records and tracks customer insolvency
+3.2.4 Credit Decisioning
+Credit assessment for Loans involves multiple data sources:
+Affordability Assessment
+MRT__AFFORDABILITY_INFORMATION__LOANS
+MRT__AFFORDABILITY_RESULTS__LOANS
+Captures income, expenses, and affordability outcomes
+Credit Bureau Integration
+MRT__EXPERIAN_CREDIT_REPORT__LOANS
+MRT__TRANSUNION_CREDIT_REPORT__LOANS
+ADDRESS_POSTCODE: Geographic data from credit bureau
+Model Scores
+MRT__MODEL_SCORES__LOANS (65M rows)
+Contains various credit risk model outputs
+Decision Matrix
+MRT__DECISION_MATRIX_RESULT__LOANS (466M rows)
+Records decisioning logic outcomes
+3.2.5 Field Definitions for Key Metrics
+Origination Dates
+Creation dates vs. funding dates
+Multiple date fields tracking different stages
+Loan Amounts
+Principal amounts vs. total payable
+Fees, interest components
+Statuses and Transitions
+Status change tracking
+Historical status records
+Geographic Data
+POSTCODE in MRT__LOANAPPLICATION_USERS__LOANS
+Regional classifications
+3.3 Motor Finance/Auto Lending (UK)
+3.3.1 Autolend.lendable Schema Structure
+The Motor Finance product uses a dedicated PostgreSQL database ("Autolend platform") with its primary schema named 'lendable':
+Core Entities
+hirepurchaseloan (~31,000 records)
+The central entity for auto finance loans
+Key fields:
+id: Primary identifier
+reference: External reference number
+grossAmount: Total loan amount including fees
+netAmount: Principal loan amount excluding fees
+originationFee: Fee charged at origination
+term: Loan term in months
+rate: Interest rate
+apr: Annual Percentage Rate
+monthlyPayment: Contractual monthly payment amount
+principalOutstanding: Current outstanding principal
+pd: Probability of Default score
+Loan States:
+"Good Standing" (21,319 loans): Current accounts
+"Cancelled" (3,531 loans): Cancelled applications/agreements
+"Complete" (3,005 loans): Successfully repaid loans
+"Late" (2,025 loans): Accounts in arrears
+"Disbursed" (1,888 loans): Recently funded loans
+"Payment Plan" (210 loans): Accounts on payment arrangements
+"Pending", "Settled", "Written Off": Less common statuses
+Lifecycle Dates:
+originationDate: When the loan was originated
+disbursalDate: When funds were disbursed
+endDate: Scheduled end date
+defaultDate: When loan entered default (if applicable)
+terminationDate: When loan was terminated (if applicable)
+chargeOffDate: When loan was charged off (if applicable)
+Relationships:
+application_id: Links to hirepurchaseloanapplication
+quote_id: Links to hirepurchasequote
+user_id: Links to customer data
+account_id: Links to account table
+vehicle_id (implied): Links to vehicle table
+loanProduct_id: Links to product configuration
+vehicle
+Tracks details of the financed vehicles
+Key Fields:
+id: Primary identifier
+make, model, type: Vehicle details
+mileage: Recorded mileage
+vrm: Vehicle Registration Mark (license plate)
+vin: Vehicle Identification Number
+glassVehicle_id: Link to Glass's Guide valuation
+assumedAnnualMileage: Expected annual usage
+Extended Vehicle Data: Connected to valuation services through:
+bregovehicle, bregovehiclevalue: Brego valuation data
+glassvehicle, glassvehiclevalue: Glass's Guide valuation
+redruthvehiclevalueforecast: Predicted future values
+hirepurchaseloanapplication
+Tracks the application process for auto finance
+Key Fields:
+id: Primary identifier
+user_id: Applicant identifier
+state: Application status
+purchasePrice: Total vehicle price
+deposit: Customer deposit amount
+partExchange: Value of trade-in vehicle
+financialSettlement: Outstanding finance on trade-in
+amount: Requested loan amount
+term: Requested term
+maxAmountApprovedForCredit: Maximum approved amount
+pd: Probability of default
+vehicle_id: Links to the vehicle being financed
+Application Process Tracking:
+applyTime: When application was submitted
+quoteTime: When quote was generated
+declineTime: When application was declined (if applicable)
+loanContractAcceptedAt: Agreement acceptance timestamp
+secciAcceptedAt: SECCI document acceptance
+adequateExplanationsAcceptedAt: Explanation acceptance
+Approval Flags:
+creditApproved: Credit decision
+drivingLicenceApproved: License verification
+bankApproved: Bank account verification
+vehicleApproved: Vehicle approval
+incomeApproved: Income verification
+affordabilityApproved: Affordability assessment
+fraudApproved: Fraud checks
+Supporting Entities
+hirepurchasequote: Initial quotes for vehicle financing
+affordabilitydetail: Affordability assessment data
+hirepurchasemodelscore: Credit scoring model results
+hirepurchasedecisionmatrixresult: Decision outcomes
+experiancreditreport: Experian credit bureau data
+openbankingdata: Open Banking integration data
+repayment: Payment history tracking
+hirepurchasedailyarrearsbalance: Arrears monitoring
+paymentplan: Payment arrangements
+collectionscase: Collections management
+vehiclevalueatorigination: Initial vehicle values
+vehiclesecurityregistrationrecord: HP agreements registration
+mot: MOT history tracking
+3.3.2 Key Auto Loan Origination Tables
+Application Process Flow
+hirepurchasequote
+Initial quotes generated for customers
+Contains preliminary vehicle and financing details
+hirepurchaseloanapplication
+Formal application for auto finance
+Tracks application status and approval stages
+affordabilitydetail
+Income and expense verification
+Affordability assessment outcomes
+hirepurchasemodelscore
+Credit scoring model results
+Risk assessment scores
+hirepurchasedecisionmatrixresult
+Final decision logic outcomes
+Approval/decline decision tracking
+hirepurchaseloan
+Created upon application approval
+Contains final loan terms and conditions
+3.3.3 Vehicle Data Tables
+Vehicle Information
+vehicle
+Core vehicle details (make, model, mileage)
+Vehicle identification (VRM, VIN)
+bregovehicle / bregovehiclevalue
+Brego vehicle validation service data
+MRT__BREGO_VEHICLE_DETAILS__MOTOR in Snowflake
+glassvehicle / glassvehiclevalue
+Glass's Guide valuation data
+Industry standard vehicle valuation
+redruthvehiclevalueforecast
+Predicted future vehicle values
+Depreciation forecasts
+mot
+MOT history and status
+Vehicle roadworthiness records
+3.3.4 Snowflake Integration
+Motor Finance data in the autolend.lendable database is integrated with the main Snowflake environment through:
+Integration Tables
+motorfinanceexternalloanid: Maps between systems
+externalloanid: Cross-system identifiers
+MRT_MOTOR Schema
+Contains summarized and transformed Motor Finance data
+Enables cross-product reporting and analysis
+3.3.5 Field Mappings for Consistent Reporting
+Common Identifier Mapping
+lendable.user_id in PostgreSQL ↔ Customer identifiers in Snowflake
+hirepurchaseloan.id ↔ Loan identifiers in MRT_MOTOR
+Date Field Standards
+originationDate in hirepurchaseloan maps to consistent date fields in Snowflake
+Standardized date formats and definitions
+Status Mappings
+Motor Finance status values mapped to consistent statuses across products
+Enables unified reporting of portfolio status
+3.4 Super App
+3.4.1 Data Structure for the Mobile Application
+The Super App, launched in 2024, has dedicated schemas in Snowflake:
+Schemas
+STG_SUPER_APP: Staging layer for app data
+MRT_SUPERAPP: Mart layer with reporting-ready data
+3.4.2 Cross-Product Integration Points
+The Super App serves as an integration point across products:
+User Management
+Unified user profiles across products
+Identity verification and management
+Product Integration
+Access to Cards, Loans, and Motor Finance products
+Cross-product account viewing and management
+3.4.3 User Activity and Engagement Tracking
+User activity in the Super App is tracked through:
+Session Data
+User login and session information
+App usage patterns and duration
+Feature Utilization
+Feature adoption and usage tracking
+Product engagement metrics
+User Journey
+Conversion tracking across products
+Cross-sell acceptance rates
+3.5 Product Comparison Matrix
+The table below provides a cross-reference of equivalent concepts and tables across products:
+Concept
+Cards
+Loans
+Motor Finance
+Customer Identifier
+ACCOUNT_ID
+LOAN_ID
+hirepurchaseloan.id
+Application Data
+MRT__APPLICATIONS__CARDS
+MRT__LOANAPPLICATION_METADATA__LOANS
+hirepurchaseloanapplication
+Account Status
+STATE in MRT__ACCOUNTS__CARDS
+STATE in MRT__LOAN__LOANS
+state in hirepurchaseloan
+Transactions
+MRT__TRANSACTIONS__CARDS
+MRT__REPAYMENT__LOANS
+repayment
+Credit Assessment
+Various *_SCORE fields
+MRT__MODEL_SCORES__LOANS
+hirepurchasemodelscore
+Collections
+MRT__ARREARS_STATUS_CHANGES__CARDS
+MRT__DAILY_COLLECTIONS_FLAGS__LOANS
+hirepurchasedailyarrearsbalance
+Vehicle Data
+N/A
+N/A
+vehicle
+
+This matrix aids in cross-product analytics by showing how similar concepts are represented across different product databases.
+4. Cross-Product Data Assets
+4.1 Customer Identity
+How customers are identified across Lendable's product ecosystem:
+4.1.1 Identity Resolution
+Customer identity is resolved through multiple mechanisms:
+Hashed Identifiers
+EMAIL_HASH
+MOBILE_NUMBER_HASH
+DATE_OF_BIRTH_HASH
+NAME variants (GIVEN_NAME_HASH, FAMILY_NAME_HASH)
+Cross-Product Linking
+MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING: 226K rows
+Provides cross-product customer linkage
+4.1.2 Customer Profiles
+Unified customer profiles are maintained through:
+Customer Attributes
+MRT__CUSTOMER_ACCOUNT_ATTRIBUTES__CARDS
+Similar tables in other product schemas
+Customer Preferences
+MRT__PREFERENCES__CARDS
+Preference management across products
+4.2 Marketing and Acquisition
+4.2.1 Channel Tracking
+Marketing channels and customer acquisition sources are tracked through:
+Source Attribution
+SOURCE field in account and application tables
+Multiple acquisition channels identified:
+Credit Karma (CREDITKARMA_SCALAR)
+Credability (CREDABILITY_SCALAR)
+Experian (EXPERIAN_SCALAR)
+Money Supermarket (MSM_SCALAR)
+Totally Money (TOTALLYMONEY_SCALAR)
+Direct traffic (DIRECT_SCALAR)
+Price comparison websites (significant source)
+Direct marketing (newer initiative)
+Channel-Specific Weighting
+Scalar fields represent channel-specific weighting factors for scoring models
+Used to adjust risk assessments based on acquisition channel quality
+4.2.2 Campaign Performance
+Digital marketing campaign performance is tracked through:
+Google Analytics Data
+MRT__EVENTS__GOOGLE_ANALYTICS: 419M rows
+MRT__USER_PROPERTIES__GOOGLE_ANALYTICS: 419M rows
+Detailed tracking of user behavior and campaign interaction
+Ad Platform Tracking
+Tables for various ad platforms:
+Google
+Meta
+TikTok
+Snapchat
+Apple Search
+SEO/SEM Data
+MRT__SE_KEYWORD_CONVERSION__GROWTH
+Keyword-level conversion tracking and performance
+Session & Funnel Analysis
+MRT__SESSION_LOANS_REPORTING__GROWTH: 581M rows
+Tracks user sessions and conversion funnel progression
+4.2.3 Attribution
+How marketing effectiveness is measured:
+Marketing Activity
+MRT__BLUESHIFT_USER_ID_EMAIL_CAMPAIGN_ACTIVITY__GROWTH: 3.1M rows
+Email campaign performance tracking
+Cross-Channel Attribution
+Tables tracking the customer journey across multiple touchpoints
+Attribution modeling for multi-channel acquisition
+4.3 Open Banking Infrastructure
+4.3.1 Transaction Categorization
+Open Banking transaction data is structured and categorized:
+Transaction Data
+MRT__TRANSACTIONS__OPENBANKING: 27.7B rows
+Contains detailed financial transaction data from customer bank accounts
+Categorization
+Automated categorization of transactions
+Category hierarchies and classification schemes
+Merchant identification and enrichment
+4.3.2 Consent Management
+Customer consent for Open Banking is tracked through:
+Consent Tables
+MRT__CUSTOMER_OB_CONSENT_PHASE_ONE__GROWTH
+Tracks when and how consent was provided
+Records consent expiration and renewal
+Usage Flags
+IS_OB_INCOME_VERIFIED
+IS_OB_PREAPPROVAL
+IS_OB_EXPANSION
+FLAG_OB_PA_QUOTE, FLAG_OB_NPA_QUOTE
+4.3.3 Data Utilization
+How Open Banking data is used across products:
+Data Pull Tracking
+MRT__DATA_PULL_SUMMARY__OPENBANKING: 17.7M records
+Monitors when Open Banking data was retrieved
+Integration Points
+Income verification for affordability assessment
+Transaction analysis for behavioral scoring
+Account verification
+Credit limit increase decisions
+Providers
+TrueLayer appears to be one provider (referenced in flags)
+May be other providers in use
+4.4 Risk and Compliance
+4.4.1 Fraud Detection
+Fraud management infrastructure includes:
+Fraud Indicators
+ACTIVE_FRAUD_TAG in account tables
+Fraud risk scoring and flagging
+Case Management
+Fraud case tracking and investigation records
+Resolution status and outcomes
+4.4.2 AML Monitoring
+Anti-Money Laundering monitoring infrastructure:
+AML Reports
+AML report tables
+Suspicious activity monitoring
+Transaction monitoring rules
+Financial Crime
+Financial crime monitoring data
+Alert management and investigation tracking
+4.4.3 Vulnerability Tracking
+Vulnerable customer identification and support:
+Vulnerability Flags
+MRT__VULNERABILITY_HISTORY__CARDS
+MRT__VULNERABILITY__LOANS
+Tracks customer vulnerability status and history
+Vulnerability Types
+Classification of different vulnerability categories
+Support measures implemented
+5. Technical Implementation Details
+5.1 Query Optimization Strategies
+5.1.1 Table Size Considerations
+When working with Lendable's database tables, consider these optimization approaches:
+Join Strategy
+Always join from smaller to larger tables (e.g., start with accounts then join to transactions)
+Use appropriate filters before joining to massive tables (e.g., MRT__TRANSACTIONS__CARDS with 159M rows)
+When accessing collections data, filter by date ranges first (e.g., MRT__DAILY_COLLECTIONS_FLAGS__LOANS with 718M rows)
+Table Selection
+For customer-level analysis, start with MRT__ACCOUNTS__CARDS or MRT__LOAN__LOANS
+For transaction analysis, filter by date range before joining to account data
+For cross-product analysis, leverage MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING
+Performance Considerations
+Avoid scanning the largest tables unnecessarily (MRT__TRANSACTIONS__OPENBANKING with 27.7B rows)
+Use date partitions when working with high-volume tables
+Consider using the mart layer (MRT_) tables instead of integration (INT_) or staging (STG_) for better performance
+5.1.2 Layer Selection
+Which data layer to use for different query needs:
+Raw Layer (RAW_)
+Use when needing source system data in original format
+Useful for troubleshooting data discrepancies with source systems
+Staging Layer (STG_)
+Minimal transformation from raw
+Used when needing close-to-source data with minimal standardization
+Integration Layer (INT_)
+Use when needing to access business rules implementation
+Combines data from multiple sources with business logic applied
+Mart Layer (MRT_)
+Primary layer for reporting and analytics
+Optimized for query performance with business context
+Presentation Layer (PRS_)
+Use for specific business reporting needs
+Contains pre-calculated metrics and business-specific views
+5.2 Sample Queries for Common Business Questions
+5.2.1 Total Originations by Product, Time Period, and Geography
+Cards Originations Query
+sql
+Copy
+SELECT
+  DATE_TRUNC('month', OPENED_AT) AS month,
+  POST_CODE_REGION,
+  COUNT(*) AS accounts_originated,
+  SUM(INITIAL_CREDIT_LIMIT) AS total_credit_limit
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE
+  OPENED_AT BETWEEN '2023-01-01' AND '2023-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+Loans Originations Query
+sql
+Copy
+SELECT
+  DATE_TRUNC('month', l.ORIGINATIONDATE) AS month,
+  u.POSTCODE,
+  COUNT(*) AS loans_originated,
+  SUM(l.GROSSAMOUNT) AS total_loan_amount
+FROM
+  PROD.MRT_LOANS.MRT__LOAN__LOANS l
+JOIN
+  PROD.MRT_LOANS.MRT__LOANAPPLICATION_USERS__LOANS u
+  ON l.USER_ID = u.USER_ID
+WHERE
+  l.ORIGINATIONDATE BETWEEN '2023-01-01' AND '2023-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+
+Motor Finance Originations Query
+sql
+Copy
+SELECT
+  DATE_TRUNC('month', ORIGINATIONDATE) AS month,
+  COUNT(*) AS loans_originated,
+  SUM(GROSSAMOUNT) AS total_originated
+FROM PROD.MRT_MOTOR.MRT__LOAN__MOTOR
+WHERE state != 'Cancelled'
+  AND ORIGINATIONDATE BETWEEN '2023-01-01' AND '2023-12-31'
+GROUP BY 1
+ORDER BY 1 DESC;
+5.2.2 Customer Acquisition and Portfolio Growth Metrics
+sql
+Copy
+-- Monthly customer acquisition growth rate
+WITH monthly_new_accounts AS (
+  SELECT
+    DATE_TRUNC('month', OPENED_AT) AS month,
+    COUNT(*) AS new_accounts
+  FROM
+    MRT__ACCOUNTS__CARDS
+  WHERE
+    OPENED_AT BETWEEN '2023-01-01' AND '2023-12-31'
+  GROUP BY 1
+  ORDER BY 1
+)
+
+SELECT
+  a.month,
+  a.new_accounts,
+  b.new_accounts AS previous_month_accounts,
+  CASE
+    WHEN b.new_accounts > 0
+    THEN ((a.new_accounts - b.new_accounts) / b.new_accounts) * 100
+    ELSE NULL
+  END AS growth_percentage
+FROM
+  monthly_new_accounts a
+LEFT JOIN
+  monthly_new_accounts b
+  ON a.month = DATE_TRUNC('month', DATEADD('month', 1, b.month))
+ORDER BY
+  a.month;
+Total Active Customer Base
+sql
+Copy
+SELECT
+  DATE_TRUNC('month', current_date) AS reporting_date,
+  (
+    SELECT COUNT(*)
+    FROM MRT__ACCOUNTS__CARDS
+    WHERE STATE = 'active'
+  ) AS active_cards,
+  (
+    SELECT COUNT(*)
+    FROM MRT__LOAN__LOANS
+    WHERE state IN ('active', 'current')
+  ) AS active_loans,
+  (
+    SELECT COUNT(*)
+    FROM lendable.hirepurchaseloan
+    WHERE state IN ('Good Standing', 'Disbursed')
+  ) AS active_motor_finance,
+  (
+    -- This would need to account for customers with multiple products
+    -- Conceptual query showing the approach
+    SELECT COUNT(DISTINCT customer_id)
+    FROM cross_product_customer_view
+    WHERE has_active_product = TRUE
+  ) AS unique_active_customers;
+5.2.3 Performance Metrics by Product, Segment, and Channel
+Cards Performance by Acquisition Channel
+sql
+Copy
+SELECT
+  SOURCE AS acquisition_channel,
+  COUNT(*) AS account_count,
+  AVG(INITIAL_CREDIT_LIMIT) AS avg_initial_limit,
+  SUM(CASE WHEN STATE = 'active' THEN 1 ELSE 0 END) / COUNT(*) * 100 AS active_rate
+  -- Additional metrics would join to transaction and collections tables
+FROM
+  MRT__ACCOUNTS__CARDS
+WHERE
+  OPENED_AT BETWEEN '2023-01-01' AND '2023-12-31'
+GROUP BY 1
+ORDER BY 2 DESC;
+Loans Performance by Credit Score Band
+sql
+Copy
+SELECT
+  CASE
+    WHEN model_score BETWEEN 0 AND 300 THEN 'Low'
+    WHEN model_score BETWEEN 301 AND 600 THEN 'Medium'
+    WHEN model_score BETWEEN 601 AND 900 THEN 'High'
+    ELSE 'Unknown'
+  END AS score_band,
+  COUNT(*) AS loan_count,
+  AVG(amount) AS avg_loan_amount
+  -- Delinquency metrics would join to collections tables
+FROM
+  MRT__LOAN__LOANS l
+JOIN
+  MRT__MODEL_SCORES__LOANS s
+  ON l.application_id = s.application_id
+WHERE
+  l.created_at BETWEEN '2023-01-01' AND '2023-12-31'
+GROUP BY 1
+ORDER BY 1;
+Motor Finance by Vehicle Type
+sql
+Copy
+SELECT
+  v.make,
+  v.model,
+  COUNT(*) AS vehicle_count,
+  AVG(h.grossAmount) AS avg_finance_amount,
+  AVG(h.term) AS avg_term_months,
+  SUM(CASE WHEN h.state = 'Late' THEN 1 ELSE 0 END) / COUNT(*) * 100 AS delinquency_rate
+FROM
+  lendable.hirepurchaseloan h
+JOIN
+  lendable.vehicle v ON h.vehicle_id = v.id
+WHERE
+  h.originationDate BETWEEN '2023-01-01' AND '2023-12-31'
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+5.3 How to Accurately Filter and Join Complex Table Relationships
+5.3.1 Cards Product Relationships
+Application to Account Flow
+sql
+Copy
+-- Example showing the relationship between applications and accounts
+SELECT
+  a.APPLICATION_ID,
+  a.STATE AS application_state,
+  acc.ACCOUNT_ID,
+  acc.STATE AS account_state,
+  a.CREATED_AT AS application_date,
+  acc.OPENED_AT AS account_open_date
+FROM
+  MRT__APPLICATIONS__CARDS a
+LEFT JOIN
+  MRT__ACCOUNTS__CARDS acc
+  ON a.APPLICATION_ID = acc.APPLICATION_ID
+WHERE
+  a.CREATED_AT BETWEEN '2023-01-01' AND '2023-01-31'
+ORDER BY
+  a.CREATED_AT;
+Account to Transaction Flow
+sql
+Copy
+-- Example showing how to join accounts to transactions
+SELECT
+  acc.ACCOUNT_ID,
+  acc.INITIAL_CREDIT_LIMIT,
+  COUNT(t.transaction_id) AS transaction_count,
+  SUM(t.amount) AS total_transaction_amount
+FROM
+  MRT__ACCOUNTS__CARDS acc
+LEFT JOIN
+  MRT__TRANSACTIONS__CARDS t
+  ON acc.ACCOUNT_ID = t.ACCOUNT_ID
+WHERE
+  acc.OPENED_AT BETWEEN '2023-01-01' AND '2023-01-31'
+  AND (t.transaction_date IS NULL OR t.transaction_date BETWEEN '2023-01-01' AND '2023-03-31')
+GROUP BY
+  acc.ACCOUNT_ID, acc.INITIAL_CREDIT_LIMIT
+ORDER BY
+  transaction_count DESC;
+5.3.2 Loans Product Relationships
+Loan Application to Loan
+sql
+Copy
+-- Example showing the relationship between loan applications and loans
+SELECT
+  la.application_id,
+  la.state AS application_state,
+  l.loan_id,
+  l.state AS loan_state,
+  la.created_at AS application_date,
+  l.created_at AS loan_creation_date
+FROM
+  MRT__LOANAPPLICATION_METADATA__LOANS la
+LEFT JOIN
+  MRT__LOAN__LOANS l
+  ON la.application_id = l.application_id
+WHERE
+  la.created_at BETWEEN '2023-01-01' AND '2023-01-31'
+ORDER BY
+  la.created_at;
+Loan to Repayment Flow
+sql
+Copy
+-- Example showing how to join loans to repayments
+SELECT
+  l.loan_id,
+  l.amount AS loan_amount,
+  COUNT(r.repayment_id) AS repayment_count,
+  SUM(r.amount) AS total_repaid_amount
+FROM
+  MRT__LOAN__LOANS l
+LEFT JOIN
+  MRT__REPAYMENT__LOANS r
+  ON l.loan_id = r.loan_id
+WHERE
+  l.created_at BETWEEN '2023-01-01' AND '2023-01-31'
+  AND (r.repayment_date IS NULL OR r.repayment_date BETWEEN '2023-01-01' AND '2023-12-31')
+GROUP BY
+  l.loan_id, l.amount
+ORDER BY
+  repayment_count DESC;
+5.3.3 Motor Finance Relationships
+Hire Purchase Application to Loan
+sql
+Copy
+-- Example showing the relationship between HP applications and loans
+SELECT
+  a.id AS application_id,
+  a.state AS application_state,
+  l.id AS loan_id,
+  l.state AS loan_state,
+  a.applyTime AS application_date,
+  l.originationDate AS loan_origination_date
+FROM
+  lendable.hirepurchaseloanapplication a
+LEFT JOIN
+  lendable.hirepurchaseloan l
+  ON a.id = l.application_id
+WHERE
+  a.applyTime BETWEEN '2023-01-01' AND '2023-01-31'
+ORDER BY
+  a.applyTime;
+Loan to Vehicle Relationship
+sql
+Copy
+-- Example showing how to join HP loans to vehicles
+SELECT
+  l.id AS loan_id,
+  l.grossAmount AS loan_amount,
+  v.make,
+  v.model,
+  v.mileage,
+  v.vrm AS registration,
+  v.vin
+FROM
+  lendable.hirepurchaseloan l
+JOIN
+  lendable.vehicle v
+  ON l.vehicle_id = v.id
+WHERE
+  l.originationDate BETWEEN '2023-01-01' AND '2023-01-31'
+ORDER BY
+  l.originationDate;
+5.3.4 Cross-Product Relationships
+Cross-Product Customer View
+sql
+Copy
+-- Conceptual query for cross-product customer view
+-- In practice, this would require accessing data from different platforms
+WITH cards_customers AS (
+  SELECT
+    EMAIL_HASH,
+    MOBILE_NUMBER_HASH,
+    ACCOUNT_ID,
+    'CARD' AS product_type,
+    OPENED_AT AS product_start_date,
+    STATE AS product_status
+  FROM
+    MRT__ACCOUNTS__CARDS
+),
+
+loans_customers AS (
+  SELECT
+    u.email_hash,
+    u.mobile_hash,
+    l.loan_id,
+    'LOAN' AS product_type,
+    l.created_at AS product_start_date,
+    l.state AS product_status
+  FROM
+    MRT__LOAN__LOANS l
+  JOIN
+    MRT__LOANAPPLICATION_USERS__LOANS u
+    ON l.application_id = u.application_id
+)
+
+SELECT * FROM cards_customers
+UNION ALL
+SELECT * FROM loans_customers
+ORDER BY email_hash, product_start_date;
+Open Banking Integration
+sql
+Copy
+-- Example showing how Open Banking data enhances customer view
+SELECT
+  c.ACCOUNT_ID AS card_account_id,
+  ob.account_id AS ob_account_id,
+  c.NET_MONTHLY_INCOME_AMOUNT AS declared_income,
+  ob.average_monthly_income AS ob_verified_income,
+  ob.account_type,
+  ob.institution_name
+FROM
+  MRT__ACCOUNTS__CARDS c
+JOIN
+  MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING cp
+  ON c.EMAIL_HASH = cp.email_hash
+JOIN
+  MRT__ACCOUNTS__OPENBANKING ob
+  ON cp.ob_customer_id = ob.customer_id
+WHERE
+  c.IS_OB_INCOME_VERIFIED = TRUE
+  AND c.OPENED_AT > '2023-01-01'
+LIMIT 100;
+5.4 Warnings about Data Quality Issues and Limitations
+5.4.1 State and Status Ambiguity
+State Field Variations
+Different products use different state values
+Consistent interpretation requires product-specific mapping
+Historical state transitions may not be fully captured in main tables - use history tables
+Status vs. State
+Some tables use both STATE and STATUS fields with different meanings
+STATE often represents the overall record status
+STATUS may represent more granular or temporary conditions
+5.4.2 Income Verification Considerations
+Multiple Income Sources
+NET_MONTHLY_INCOME_AMOUNT in Cards product may come from different sources
+Check NET_MONTHLY_INCOME_SOURCE to determine data origin
+Open Banking verified income may be in separate tables from declared income
+Open Banking Flags
+IS_OB_INCOME_VERIFIED doesn't guarantee complete income verification
+Check additional flags like FLAG_OB_PA_QUOTE for specific usage contexts
+5.4.3 Cross-Database Query Limitations
+System Separation
+Direct joins between Snowflake and PostgreSQL (Autolend) not supported
+Cross-platform analysis requires separate extraction and manual joining
+Summary tables in Snowflake may not contain full detail from PostgreSQL
+Foreign Key Relationships
+Foreign key relationships aren't consistently enforced across all tables
+Some relationships rely on business logic rather than database constraints
+Always validate joins between tables with row counts before analysis
+5.4.4 Historical Data Retention
+Time-Based Pruning
+Some operational tables may have limited historical retention
+For complete historical analysis, use history tables or time-based snapshots
+Transaction data typically has longer retention than status or calculation tables
+Schema Evolution
+Older data may not have the same schema as newer data
+Fields may have changed meaning or calculation methods over time
+Check schema version or snapshot date when analyzing trends over long periods
+5.5 Data Testing and Quality Assurance
+To verify data integrity and consistency, regular testing should be performed using these patterns:
+5.5.1 Referential Integrity Checks
+These queries help identify potential data integrity issues:
+sql
+Copy
+-- Check for orphaned transactions (transactions without a valid account)
+SELECT
+  COUNT(*) AS orphaned_transactions
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t
+LEFT JOIN PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+  ON t.ACCOUNT_ID = a.ACCOUNT_ID
+WHERE a.ACCOUNT_ID IS NULL;
+
+-- Check for orphaned repayments (repayments without a valid loan)
+SELECT
+  COUNT(*) AS orphaned_repayments
+FROM PROD.MRT_LOANS.MRT__REPAYMENT__LOANS r
+LEFT JOIN PROD.MRT_LOANS.MRT__LOAN__LOANS l
+  ON r.LOAN_ID = l.LOAN_ID
+WHERE l.LOAN_ID IS NULL;
+5.5.2 Data Reconciliation Checks
+These queries help reconcile data across different tables:
+sql
+Copy
+-- Reconcile application counts to account counts
+SELECT
+  COUNT(DISTINCT a.APPLICATION_ID) AS total_applications,
+  COUNT(DISTINCT acc.ACCOUNT_ID) AS total_accounts,
+  (COUNT(DISTINCT a.APPLICATION_ID) - COUNT(DISTINCT acc.ACCOUNT_ID)) AS difference
+FROM PROD.MRT_CARDS.MRT__APPLICATIONS__CARDS a
+LEFT JOIN PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS acc
+  ON a.APPLICATION_ID = acc.APPLICATION_ID;
+5.5.3 Data Quality Metrics
+sql
+Copy
+-- Check for completeness of key fields
+SELECT
+  COUNT(*) AS total_accounts,
+  COUNT(CASE WHEN INITIAL_CREDIT_LIMIT IS NULL THEN 1 END) AS missing_credit_limit,
+  COUNT(CASE WHEN OPENED_AT IS NULL THEN 1 END) AS missing_open_date,
+  COUNT(CASE WHEN STATE IS NULL THEN 1 END) AS missing_state
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+6. Data Export and Integration Guidelines
+6.1 Exporting Data for Analysis
+6.1.1 Recommended File Formats
+When exporting data from the Lendable database for external analysis:
+CSV Format: Best for tabular data that will be imported into Excel or other analytics tools
+Example query with export formatting:
+sql
+Copy
+-- Export account data in CSV format
+SELECT
+  ACCOUNT_ID,
+  OPENED_AT,
+  STATE,
+  INITIAL_CREDIT_LIMIT
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE OPENED_AT > '2023-01-01'
+ORDER BY OPENED_AT DESC;
+JSON Format: Better for nested data structures or when preserving data types is important Example:
+sql
+Copy
+-- Export account data in JSON format
+SELECT
+  OBJECT_CONSTRUCT(
+    'account_id', ACCOUNT_ID,
+    'opened_date', OPENED_AT,
+    'status', STATE,
+    'initial_limit', INITIAL_CREDIT_LIMIT,
+    'metrics', OBJECT_CONSTRUCT(
+      'days_active', DATEDIFF('day', OPENED_AT, CURRENT_DATE()),
+      'is_active', IFF(STATE = 'active', true, false)
+    )
+  ) AS account_json
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE OPENED_AT > '2023-01-01'
+LIMIT 1000;
+6.1.2 Extract Patterns for Large Datasets
+For extracting large datasets (>1M rows):
+Use date partitioning to extract data in manageable chunks
+sql
+Copy
+-- Extract transactions in monthly chunks
+SELECT
+  TRANSACTION_ID,
+  ACCOUNT_ID,
+  TRANSACTION_DATE,
+  AMOUNT,
+  TRANSACTION_TYPE
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+WHERE TRANSACTION_DATE >= '2023-01-01'
+  AND TRANSACTION_DATE < '2023-02-01'
+ORDER BY TRANSACTION_DATE;
+6.2 Third-Party Tool Integration
+6.2.1 Business Intelligence Tools
+Connection parameters for common BI tools:
+Tableau:
+Connection Type: Snowflake
+Server: [Snowflake account URL]
+Database: PROD
+Schema: MRT_CARDS, MRT_LOANS, etc.
+Warehouse: [Appropriate warehouse name]
+Role: [Appropriate role with read permissions]
+Power BI:
+Similar connection parameters as Tableau
+Recommended to use direct query mode for large tables
+Create date parameters for filtering large datasets
+7. US Operations Database Architecture
+7.1 Accessing US Data vs. UK Data
+The Lendable database architecture has specific access patterns for US and UK data:
+7.1.1 UK Data Access
+Primary access method: Direct Snowflake web interface
+Connection: Connect directly to Snowflake using UK VPN
+Core databases: PROD, RAW_PRODUCTION, RAW_MISC
+Key schemas: MRT_CARDS, MRT_LOANS, MRT_OPENBANKING, MRT_GROWTH, MRT_MOTOR
+7.1.2 US Data Access
+Primary access method: Superset business intelligence platform
+Connection: Connect to Superset using US VPN
+Underlying database: Still Snowflake, but accessed through Superset interface
+Core schemas: MRT_CARDS_US, MRT_LOANS_US, INT_CARDS_US
+Connection name in Superset: lendable_dbt_prod
+Schema Selection in Superset:
+When querying US data in Superset, you must first select the appropriate schema from the dropdown menu
+Different schemas contain different product data:
+mrt_cards_us: Contains US Cards product data
+mrt_loans_us: Contains US Loans product data
+int_cards_us: Contains integration-layer US Cards data
+Switching between schemas is necessary to access different product data
+The schema selection must be performed before running any queries
+This distinction is important for users who need to access both US and UK data, as different tools and VPN settings may be required.
+7.2 US Database Systems Overview
+7.2.1 Primary Database Platforms
+Lendable's US operations utilize a similar multi-platform approach as the UK but with dedicated environments:
+Snowflake Data Warehouse:
+Contains separate databases for US products
+MRT_LOANS_US: US Loans product data
+MRT_CARDS_US: US Cards product data
+INT_CARDS_US: Integration layer for US Cards data
+Follows similar layer architecture pattern as UK (Raw → Staging → Integration → Mart)
+Superset Analytics Platform:
+Business intelligence and analytics platform for US operations
+Provides visualization and reporting interface for US data
+Connects to Snowflake for data access
+Used primarily for US products (Loans since 2022, Cards since 2024)
+Different from Redash used for UK Motor Finance
+7.2.2 Naming Conventions & Patterns
+US database follows similar conventions to UK but with US-specific identifiers:
+Schema Prefixes:
+MRT_LOANS_US, MRT_CARDS_US: Mart layer for US products
+INT_CARDS_US: Integration layer for US Cards
+Similar layer prefixes (STG_, INT_, MRT_, PRS_) as UK environment
+Table Naming:
+mrt__loans_us__loan_application: Standard mart table for US loans
+mrt__cards_us__daily_aum_per_account: Daily assets under management for US cards
+INT__CARDS_US__TEST_ACCOUNT: Test accounts table in integration layer
+7.3 US Loans Product Data Model
+7.3.1 Core Tables
+US Loans data is primarily stored in MRT_LOANS_US database with key tables:
+MRT__LOANS_US__LOAN_APPLICATION (2,265,715 rows):
+Primary table for US loan applications and originations
+Comprehensive table with cleaned data and enhanced columns for analytics
+Contains the complete loan lifecycle from application to origination
+MRT__LOANS_US__LOAN_FEATURES_EXCLUSIONS (18,448 rows):
+Tracks loans to be excluded from reporting based on specific rules
+Used for data quality control in reporting
+MRT__LOANS_US__FRAUD_TAGS (34,112 rows):
+Fraud detection data extracted from Alloy
+Applied to applications that have completed requirements
+7.3.2 Loan Application Data Model
+The MRT__LOANS_US__LOAN_APPLICATION table contains comprehensive data with these key components:
+Identification Fields:
+PRIVATE_ID: Internal identifier
+UUID: Universal unique identifier used in frontend and admin portal
+EXTERNAL_ID: ID provided by introducers for cross-system matching
+LOAN_UUID/LOAN_ID: Identifiers for originated loans
+Application Lifecycle Timestamps:
+CREATED_AT: Initial application creation
+QUOTED_AT: When offer was presented
+CLICKED_AT: When user engaged with offer
+REQUIREMENTS_STARTED_AT: Started requirements collection
+REQUIREMENTS_SUBMITTED_AT: Completed initial requirements
+REQUIREMENTS_PASSED_AT: Requirements approved by agent
+COMPLETED_AT: Application completed (became a loan)
+DECLINED_AT: Application declined
+TIMES_OUT_AT: Application expired
+ORIGINATED_AT: When loan was originated
+Loan Terms:
+QUOTE_GROSS_AMOUNT: Offered loan amount
+QUOTE_TERM: Offered loan term in months
+QUOTE_APR: Offered Annual Percentage Rate
+QUOTE_MONTHLY_PAYMENT: Offered monthly payment
+ORIGINATED_AMOUNT: Final loan amount
+ORIGINATED_TERM: Final loan term
+ORIGINATED_APR: Final APR
+ORIGINATED_IR: Final interest rate
+ORIGINATED_FEE: Final origination fee
+Marketing Attribution:
+ATTRIBUTABLE_INTRODUCER_ID/NAME: Commission-eligible introducer
+INITIAL_INTRODUCER_ID/NAME: First introducer that created the lead
+CHANNEL: Marketing channel
+CREDIT_KARMA_CAMPAIGN/SIGMA_ID: Credit Karma-specific tracking
+EXPERIMENT_NAME/GROUP: A/B testing information
+Credit Assessment:
+VANTAGE_SCORE: Credit bureau score
+VANTAGE_BAND: Score band categorization
+FIRST_TUCR_SOFT_ID: First soft pull credit report ID
+FIRST_TUCR_HARD_ID: First hard pull credit report ID
+TAHOE_RAW/SCALED: Tahoe risk model scores
+YUKON_RAW/SCALED: Yukon risk model scores (newer model)
+PRIMARY_MODEL_NAME: Primary risk model used
+Income and Affordability:
+NET_MONTHLY_INCOME: Verified monthly income
+STATED_NET_MONTHLY_INCOME: Self-reported monthly income
+TWN_ANNUAL_INCOME: Income from The Work Number verification
+DEBT_TO_INCOME_RATIO: DTI calculation
+PAYMENT_TO_INCOME_RATIO: PTI calculation
+Partner Integration:
+PARTNER_BANK_REVIEW_AT: When CRB acknowledged loan documents
+PARTNER_BANK_REFERRED_AT: When CRB referred loan back for issues
+Commission Structure:
+Detailed commission fields for each partner:
+BANKRATE_COMMISSION
+CONSUMER_AFFAIRS_COMMISSION
+CREDIBLE_COMMISSION (with BASE/KICKER components)
+CREDIT_KARMA_COMMISSION
+EVEN_FINANCIAL_COMMISSION
+LENDINGTREE_COMMISSION
+NERDWALLET_COMMISSION
+EXPERIAN_COMMISSION
+Applicant Information:
+ADDRESS_STATE: State of residence
+Multiple fields with APPLICANT_INFORMATION prefix for:
+Employment status and details
+Income information
+Homeownership status
+Education level
+Self-reported credit rating
+Risk Management Flags:
+Multiple FLAG_* fields for exclusions and rule expansions
+RISK_MARKET classification
+Decline management with DECLINE_REASONS, DECLINE_TYPE
+7.3.3 Analytics and Reporting Infrastructure
+US Loans has extensive analytics capabilities:
+Funnel Analytics:
+MRT__LOANS_US__FUNNEL_DAILY (738,431 rows)
+Tracks conversion through application stages
+Daily granularity for trend analysis
+Performance Reporting:
+MRT__PEACH__LOAN_STATUS_SNAPSHOTS (6,021,519 rows)
+MRT__PEACH__LOAN_ARREARS_STATUS (183,207 rows)
+MRT__PEACH__REPORTING_ESMA (6,021,519 rows)
+Daily performance monitoring
+Regulatory reporting capabilities
+Marketing Partner Reporting:
+Dedicated daily report tables for each major partner
+Monthly aggregation tables for trending
+Partner-specific performance metrics
+7.4 US Cards Product Data Model
+7.4.1 Core Tables
+US Cards data is stored in MRT_CARDS_US database with key tables:
+MRT__CARDS_US__CARDS_ACCOUNTS (8,401 rows):
+Main table for all card accounts information
+Comprehensive account-level data
+Similar to MRT__ACCOUNTS__CARDS in UK
+MRT__CARDS_US__CARDS_APPLICATION (57,304 rows):
+Main application table
+Tracks application process
+Similar to MRT__APPLICATIONS__CARDS in UK
+MRT__CARDS_US__APPLICATION_ALLOY (18,395 rows):
+Alloy identity verification data
+Used for fraud prevention
+MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT (564,810 rows):
+Daily assets under management per card account
+Key tracking table for portfolio performance
+Fields include account balance snapshots
+MRT__CARDS_US__DAILY_BILLED_REVENUE_PER_ACCOUNT (605,261 rows):
+Daily revenue tracking per account
+Monitors revenue generation
+MRT__DATA_SCIENCE__ASTRUM_FEATURE_VALUES (49,587 rows):
+Astrum credit risk model feature values and scores
+Used for risk management
+7.4.2 Card Account Data Model
+The MRT__CARDS_US__CARDS_ACCOUNTS table contains these key components:
+Account Identifiers:
+ACCOUNT_ID: Primary identifier
+ACCOUNT_NUMBER: Formatted account number
+EXTERNAL_ID: Links to Peach and Marqeta systems
+LOAN_ID: Internal loan ID in Peach
+Test Account Management:
+FLAG_TEST_ACCOUNT: Identifies test accounts
+FLAG_FRIEND_FAMILY_ACCOUNT: Identifies employee/internal accounts
+Used to exclude non-production accounts from business reporting
+Account Lifecycle:
+OPENED_AT: Account opening date
+COHORT: Monthly cohort grouping
+COHORT_AGE_MONTHS: Age of account in months
+STATE: Current account status
+WAS_ONBOARDED: Indicates successful app installation and login
+BLOCKING_REASON: Reason for account blocks
+Card Terms:
+Initial terms:
+INITIAL_CREDIT_LIMIT
+INITIAL_APR
+INITIAL_ANNUAL_FEE
+INITIAL_CASHBACK
+Current terms:
+ACCOUNT_CREDIT_LIMIT
+ACCOUNT_APR
+ACCOUNT_ANNUAL_FEE
+ACCOUNT_CASHBACK
+Credit line management:
+CURRENT_CREDIT_LIMIT
+TEMPORARY_LINE
+FLAG_FULL_CREDIT_LINE_UNLOCKED
+FULL_CREDIT_LINE_UNLOCKED_AT
+Risk Assessment:
+ASTRUM_SCORE: Proprietary risk model score
+VANTAGESCORE3: Third-party credit score
+Income & Affordability:
+APP_STATED_ANNUAL_INCOME: Self-reported annual income
+APP_STATED_MONTHLY_INCOME: Self-reported monthly income
+APP_STATED_MORTGAGE/RENT: Housing expenses
+GROSS_ANNUAL_INCOME: Possibly verified income
+APP_EMPLOYMENT_STATUS: Employment status
+Customer Attributes:
+APP_HOMEOWNER_STATUS: Homeownership status
+APP_ADDRESS_STATE: State of residence
+Marketing Attribution:
+UTM_SOURCE: Marketing source
+UTM_SOURCE_ORIGINAL: Original source
+UTM_CAMPAIGN: Campaign identifier
+UTM_TERM: Search term
+UTM_COMPANY_ID: Partner company
+UTM_EXTERNAL_ID: External reference
+FLAG_UTM_MISSING: Missing attribution flag
+Account Management:
+PAPERLESS_ENABLED: Paperless statements status
+INCIDENT_FLAG/INCIDENT_TYPE: Issue tracking
+7.4.3 Peach Banking Platform Integration
+US Cards uses Peach as a core banking platform:
+MRT__PEACH__CARDS_DAILY_SNAPSHOTS (613,648 rows):
+Daily account snapshots from Peach
+Contains account status and balances
+MRT__PEACH__CARDS_DAILY_SNAPSHOTS_INTEREST_ADJUSTED (605,261 rows):
+Interest-adjusted snapshots with one-day lag correction
+Accounts for interest posting timing
+MRT__PEACH__CARDS_STATEMENTS (22,475 rows):
+Statement records from Peach
+Billing cycle data
+MRT__PEACH__CARDS_STATEMENT_PERFORMANCE (22,256 rows):
+Tracks statement payment performance
+Important for delinquency monitoring
+7.4.4 Transaction Data and Open Banking
+US Cards includes extensive transaction-level data:
+MRT__CARDS_US__PLAID_ASSET_REPORT_TRANSACTIONS (2,130,651 rows):
+Transaction data from Plaid integration
+Used for customer financial behavior analysis
+Similar to but separate from UK's Open Banking integration
+7.4.5 Test Account Management
+Special handling exists for test and internal accounts:
+Test accounts are tracked within account tables using:
+FLAG_TEST_ACCOUNT
+FLAG_FRIEND_FAMILY_ACCOUNT
+Tracked in INT__CARDS_US__TEST_ACCOUNT for centralized management
+Must be excluded from business reporting with filters like:
+sql
+Copy
+AND a.EXTERNAL_ID NOT IN (
+  SELECT EXTERNAL_ID
+  FROM INT_CARDS_US.INT__CARDS_US__TEST_ACCOUNT
+  WHERE FLAG_FRIEND_FAMILY_ACCOUNT = 0
+)
+7.5 Cross-Schema Relationships in US Operations
+The US database architecture has dependencies between different schemas that should be understood when performing analysis:
+7.5.1 Schema Hierarchy
+US data follows the same layer pattern as UK data:
+STG_* schemas: Staging data from source systems
+INT_* schemas: Integration layer with business rules applied
+MRT_* schemas: Mart layer with reporting-ready data
+PRS_* schemas: Presentation layer with business-specific views
+7.5.2 Cross-Schema Joins
+Unlike the UK environment where cross-schema joins are common, in the US environment:
+Most analysis should be performed within a single schema
+When cross-schema joins are necessary, be mindful of performance impact
+Example cross-schema query (joining Cards account data with Peach data):
+sql
+Copy
+SELECT
+  a."ACCOUNT_ID",
+  a."OPENED_AT",
+  p."STATEMENT_DATE",
+  p."PAYMENT_DUE_DATE",
+  p."MINIMUM_PAYMENT_DUE"
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS" a
+JOIN "PROD"."MRT_CARDS_US"."MRT__PEACH__CARDS_STATEMENTS" p
+  ON a."EXTERNAL_ID" = p."EXTERNAL_ID"
+WHERE a."OPENED_AT" > '2023-01-01'
+ORDER BY a."ACCOUNT_ID", p."STATEMENT_DATE"
+7.5.3 Schema Navigation Tips
+Use the Superset schema dropdown to switch between product schemas
+Tables within each schema follow consistent naming patterns (e.g., MRT__CARDS_US__*)
+Third-party integrations (like Peach) have their own naming patterns within schemas
+7.6 US Market Operational Model
+7.6.1 Partner Bank Structure
+US operations utilize a partner bank model with detailed integration:
+Cross River Bank (CRB) integration for Loans:
+Explicit fields in loan_application: PARTNER_BANK_REVIEW_AT, PARTNER_BANK_REFERRED_AT
+Process tracking when CRB acknowledges receipt or refers back loans
+Regulatory compliance tracking
+Continental Bank partnership for Cards:
+Likely integrated through Peach platform
+Reflected in data models with regulatory fields
+Regulatory Impact on Data:
+Additional compliance fields not present in UK data
+MRT__PEACH__REPORTING_ESMA: Regulatory reporting table
+US-specific state regulations tracked through ADDRESS_STATE
+7.6.2 Third-Party Service Integrations
+US products integrate with multiple third-party services:
+Credit Bureau Services:
+TransUnion for credit reports (FIRST_TUCR_SOFT_ID, FIRST_TUCR_HARD_ID)
+VantageScore for standardized scoring (VANTAGE_SCORE, VANTAGE_BAND)
+Identity Verification:
+Alloy integration (MRT__CARDS_US__APPLICATION_ALLOY)
+Fraud detection tags (FRAUD_VERIFICATION_TAGS)
+Income Verification:
+The Work Number (TWN) integration (IS_TWN_PULLED, TWN_ANNUAL_INCOME)
+Plaid for bank account validation
+Banking Platforms:
+Peach as core banking platform for both Cards and Loans
+Peach data for daily snapshots, statements, and performance
+Financial Data Aggregation:
+Plaid for financial account data and transactions
+Open Banking expansion indicated by FLAG_OPEN_BANKING_EXPANSION
+7.6.3 Marketing Partner Ecosystem
+Extensive partner integrations with dedicated commission structure:
+Loan Aggregators:
+Credit Karma: Detailed integration including pre-click marketing
+Credible: Base and kicker commission structure
+NerdWallet: Performance reporting
+LendingTree: Monthly performance tracking
+Even Financial: Daily reporting
+Bankrate
+Consumer Affairs
+Experian
+Pricing and Competition:
+MRT__PRICING__COMPETITOR_DATA (6.8M rows)
+Tracks competitor pricing for market positioning
+7.6.4 Integration with UK Systems
+While US operations have dedicated database environments, some integration exists:
+Separate database environments but similar architectures:
+Layer pattern follows STG → INT → MRT → PRS as in UK
+Similar naming conventions with _US suffix
+Shared data transformation patterns
+Different analytical needs:
+US-specific regulatory reporting
+Partner bank model vs. direct lending in UK
+Different credit bureau integrations
+7.7 Credit Risk and Data Science Infrastructure
+7.7.1 US-Specific Credit Models
+US operations use different risk models than UK:
+Loans Risk Models:
+Yukon: Current primary model (MRT__DATA_SCIENCE__YUKON_FEATURE_VALUES)
+Tahoe: Legacy model, still referenced in data
+Model feature values and raw/scaled scores tracked
+Model monitoring (MRT__DATA_SCIENCE__MODEL_MONITORING)
+Feature distribution analysis (MRT__DATA_SCIENCE__FEATURE_DISTRIBUTION)
+Cards Risk Models:
+Astrum: Primary model (MRT__DATA_SCIENCE__ASTRUM_FEATURE_VALUES)
+Integration with VantageScore 3.0
+7.7.2 Performance Tracking
+Sophisticated loan performance analytics:
+MRT__DATA_SCIENCE__LOAN_PERFORMANCE (183,207 rows):
+Performance data for booked loans
+Month-on-book analysis
+Integrated with credit features
+Delinquency Tracking:
+MRT__PEACH__LOAN_ARREARS_STATUS
+MRT__PEACH__LOAN_STATUS_SNAPSHOTS
+Daily monitoring of loan status
+7.7.3 Risk Management Flags
+Extensive system of exclusion and expansion flags:
+Exclusion Flags:
+FLAG_HP_EXCLUSIONS
+FLAG_MARCH_RISK_EXCLUSIONS
+FLAG_PLAID_EXCLUSIONS
+FLAG_DTI_EXCLUSIONS
+FLAG_PTI_EXCLUSIONS
+FLAG_EXCLUSIONS_2023
+FLAG_EXCLUSIONS_202401
+Expansion Flags (rule relaxation):
+FLAG_HIGH_YUKON_EXPANSION
+FLAG_LOW_YUKON_EXPANSION
+FLAG_DTI_EXPANSION
+FLAG_OPEN_BANKING_EXPANSION
+FLAG_NEGATIVE_BALANCE_EXPANSION
+7.8 Query Patterns for US Data Access
+7.8.1 Origination Reporting
+For US Loans origination reporting:
+sql
+Copy
+-- US Loans: Monthly origination volume
+SELECT
+  DATE_TRUNC('MONTH', "ORIGINATED_AT") AS "ORIGINATED_MONTH",
+  COUNT(*) AS "LOAN_COUNT",
+  SUM(ORIGINATED_AMOUNT) AS "TOTAL_ORIGINATION",
+  AVG(ORIGINATED_AMOUNT) AS "AVG_LOAN_SIZE"
+FROM "PROD"."MRT_LOANS_US".mrt__loans_us__loan_application
+WHERE "ORIGINATED_AT" IS NOT NULL
+  AND "ORIGINATED_AT" >= TO_TIMESTAMP('2024-03-01T00:00:00.000000')
+  AND "ORIGINATED_AT" < TO_TIMESTAMP('2025-03-01T00:00:00.000000')
+  -- Exclude test accounts and other exclusions
+  AND (FLAG_TEST_ACCOUNT = 0 OR FLAG_TEST_ACCOUNT IS NULL)
+  AND (FLAG_ORIGINATION_EXCLUDE = 0 OR FLAG_ORIGINATION_EXCLUDE IS NULL)
+GROUP BY DATE_TRUNC('MONTH', "ORIGINATED_AT")
+ORDER BY "ORIGINATED_MONTH";
+7.8.2 Pricing Metrics
+For US Loans pricing metrics:
+sql
+Copy
+SELECT 
+  DATE_TRUNC('MONTH', "ORIGINATED_AT") AS "ORIGINATED_AT",
+  SUM(ORIGINATED_IR * ORIGINATED_AMOUNT / 100.0) / SUM(ORIGINATED_AMOUNT) AS "Gross Weighted Avg. IR",
+  SUM(ORIGINATED_FEE) / SUM(ORIGINATED_AMOUNT) AS "Gross Weighted Avg. Fee"
+FROM "MRT_LOANS_US".mrt__loans_us__loan_application
+WHERE "ORIGINATED_AT" >= TO_TIMESTAMP('2024-03-01T00:00:00.000000')
+  AND "ORIGINATED_AT" < TO_TIMESTAMP('2025-03-01T00:00:00.000000')
+GROUP BY DATE_TRUNC('MONTH', "ORIGINATED_AT")
+7.8.3 US Cards Portfolio Balance Reporting
+sql
+Copy
+-- US Cards: Monthly portfolio balances with growth metrics
+WITH month_ends AS (
+  SELECT DISTINCT
+    DATE_TRUNC('month', day) + INTERVAL '1 month' - INTERVAL '1 day' AS month_end_date
+  FROM "PROD"."MRT_CARDS_US".mrt__cards_us__daily_aum_per_account
+),
+monthly_balances AS (
+  SELECT
+    me.month_end_date,
+    COUNT(DISTINCT a.EXTERNAL_ID) AS active_accounts,
+    COALESCE(SUM(a.balance_end), 0) AS total_balance_end
+  FROM month_ends me
+  LEFT JOIN "PROD"."MRT_CARDS_US".mrt__cards_us__daily_aum_per_account a
+    ON a.day = me.month_end_date
+    -- Exclude test accounts
+    AND a.EXTERNAL_ID NOT IN (
+      SELECT EXTERNAL_ID
+      FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+      WHERE FLAG_FRIEND_FAMILY_ACCOUNT = 0
+    )
+  GROUP BY me.month_end_date
+)
+SELECT
+  mb.month_end_date,
+  mb.active_accounts,
+  mb.total_balance_end,
+  mb.total_balance_end / NULLIF(mb.active_accounts, 0) AS avg_balance_per_account,
+  -- Month-over-month growth
+  mb.total_balance_end - LAG(mb.total_balance_end) OVER (ORDER BY mb.month_end_date) AS mom_balance_change,
+  CASE
+    WHEN LAG(mb.total_balance_end) OVER (ORDER BY mb.month_end_date) > 0
+    THEN (mb.total_balance_end - LAG(mb.total_balance_end) OVER (ORDER BY mb.month_end_date)) /
+         LAG(mb.total_balance_end) OVER (ORDER BY mb.month_end_date) * 100
+    ELSE NULL
+  END AS mom_growth_pct
+FROM monthly_balances mb
+ORDER BY mb.month_end_date
+7.8.4 US Cards Revenue Analysis
+sql
+Copy
+-- US Cards: Daily revenue analysis
+WITH daily_revenue AS (
+  SELECT
+    DATE_TRUNC('month', day) AS month,
+    SUM(billed_interest) AS total_interest,
+    SUM(billed_fees) AS total_fees,
+    SUM(billed_interest + billed_fees) AS total_revenue
+  FROM "PROD"."MRT_CARDS_US".mrt__cards_us__daily_billed_revenue_per_account
+  WHERE EXTERNAL_ID NOT IN (
+    SELECT EXTERNAL_ID
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+  GROUP BY DATE_TRUNC('month', day)
+),
+monthly_aum AS (
+  SELECT
+    DATE_TRUNC('month', day) AS month,
+    AVG(SUM(balance_end)) OVER (PARTITION BY DATE_TRUNC('month', day)) AS avg_monthly_balance
+  FROM "PROD"."MRT_CARDS_US".mrt__cards_us__daily_aum_per_account
+  WHERE EXTERNAL_ID NOT IN (
+    SELECT EXTERNAL_ID
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+  GROUP BY DATE_TRUNC('month', day)
+)
+SELECT
+  dr.month,
+  dr.total_interest,
+  dr.total_fees,
+  dr.total_revenue,
+  ma.avg_monthly_balance,
+  dr.total_interest / NULLIF(ma.avg_monthly_balance, 0) * 100 * 12 AS annualized_interest_yield_pct,
+  dr.total_revenue / NULLIF(ma.avg_monthly_balance, 0) * 100 * 12 AS annualized_total_yield_pct
+FROM daily_revenue dr
+JOIN monthly_aum ma ON dr.month = ma.month
+ORDER BY dr.month
+7.8.5 US Cards Application Funnel Analysis
+sql
+Copy
+-- US Cards: Application funnel by state
+WITH app_funnel AS (
+  SELECT
+    APP_ADDRESS_STATE,
+    COUNT(*) AS total_applications,
+    SUM(CASE WHEN STATE IN ('active', 'open') THEN 1 ELSE 0 END) AS approved_accounts,
+    SUM(CASE WHEN WAS_ONBOARDED = TRUE THEN 1 ELSE 0 END) AS onboarded_accounts,
+    SUM(CASE WHEN FLAG_FULL_CREDIT_LINE_UNLOCKED = 1 THEN 1 ELSE 0 END) AS fully_activated_accounts
+  FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+  WHERE FLAG_TEST_ACCOUNT = 0
+    AND FLAG_FRIEND_FAMILY_ACCOUNT = 0
+  GROUP BY APP_ADDRESS_STATE
+)
+SELECT
+  APP_ADDRESS_STATE,
+  total_applications,
+  approved_accounts,
+  onboarded_accounts,
+  fully_activated_accounts,
+  approved_accounts / NULLIF(total_applications, 0) * 100 AS approval_rate_pct,
+  onboarded_accounts / NULLIF(approved_accounts, 0) * 100 AS onboarding_rate_pct,
+  fully_activated_accounts / NULLIF(onboarded_accounts, 0) * 100 AS activation_rate_pct
+FROM app_funnel
+WHERE total_applications > 10
+ORDER BY total_applications DESC
+7.9 US Data Access Tools
+7.9.1 Superset
+Primary web-based analytics interface for US data
+Connected to Snowflake databases through lendable_dbt_prod connection
+Used to run ad hoc SQL queries against US data
+Provides visualization and dashboard capabilities
+Requires US VPN access
+Key features:
+SQL Editor: Run custom SQL against US schemas
+Datasets: Create reusable data views
+Charts: Build visualizations from query results
+Dashboards: Assemble multiple charts into business dashboards
+Best practices:
+Always specify schema and database in queries using full notation ("PROD"."MRT_CARDS_US"."table_name")
+Use double quotes around column names that contain capital letters
+Limit result sets when exploring large tables
+Save commonly used queries for reuse
+7.9.1.1 Superset Query Examples
+When querying US data through Superset, note that the syntax may differ slightly from direct Snowflake access. Here are examples:
+sql
+Copy
+-- List tables in US Cards schema
+SELECT table_name
+FROM "PROD"."INFORMATION_SCHEMA"."TABLES"
+WHERE table_schema = 'MRT_CARDS_US'
+LIMIT 10;
+
+-- Count rows in key US Cards tables
+SELECT
+  'MRT__CARDS_US__CARDS_ACCOUNTS' AS table_name,
+  COUNT(*) AS row_count
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS";
+
+-- Simple aggregation query for US Cards
+SELECT
+  DATE_TRUNC('month', "OPENED_AT") AS month,
+  COUNT(*) AS new_accounts
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE "OPENED_AT" > '2023-01-01'
+GROUP BY DATE_TRUNC('month', "OPENED_AT")
+ORDER BY month;
+7.9.2 Direct Snowflake Access
+SQL access to US databases through Snowflake interface
+Environment structure:
+Production environment (PROD database with current flag)
+Development environment (DEV database)
+Sandbox environment (SANDBOX_PRODUCTION database)
+Standard Snowflake features:
+Worksheets for query development
+Dashboards for visualizations
+Tasks for scheduled operations
+Warehouses for compute resources
+7.9.3 Metadata Integration
+Table metadata management:
+MRT__CARDS_US__APPLICATION_ALLOY has comment "alloy data for cards application"
+MRT__CARDS_US__CARDS_ACCOUNTS has comment "main table for all cards accounts related information"
+MRT__CARDS_US__CARDS_APPLICATION has comment "main table for all cards application related information"
+Column metadata examples:
+ACCOUNT_ID defined as "unique ID for each account"
+ACCOUNT_NUMBER defined as "unique account number"
+EXTERNAL_ID defined as "unique loan external id matching with peach and marqeta"
+7.10 Summary of US Database Architecture
+The US database architecture represents a sophisticated implementation that shares architectural patterns with the UK system while accommodating US-specific requirements:
+7.10.1 Key Architectural Components
+Snowflake Database: Primary data warehouse with dedicated US schemas
+Superset: Analytics tool for visualization and SQL access
+Data Transformation Framework: Multi-layer transformation (STG → INT → MRT → PRS)
+dbt Integration: Evidence of dbt usage for transformation management
+7.10.2 Product Coverage
+US Loans: Established in approximately 2022
+Rich dataset with 2.3M loan applications
+Mature reporting infrastructure
+Integration with Cross River Bank
+Yukon and Tahoe risk models
+US Cards: Newer product launched in 2024
+Growing dataset with 57K applications and 8.4K accounts
+Integration with Peach banking platform
+Astrum risk model
+Daily AUM and revenue tracking
+7.10.3 Data Integration Points (Continued)
+Marketing Partners:
+Multiple loan aggregators with custom reporting
+Commission tracking for each partner
+Performance monitoring by channel
+7.10.4 Analytical Capabilities
+Portfolio Monitoring:
+Daily account snapshots
+Balance and revenue tracking
+Statement performance
+Delinquency monitoring
+Business Intelligence:
+Funnel analysis
+Channel performance
+Risk model monitoring
+Competitive analysis
+7.10.5 Considerations for SQL Development
+Query Optimization:
+Large transaction tables require careful filtering
+Test account exclusion is critical
+Consider performance impacts of large joins
+Data Quality Management:
+Multiple exclusion flags for different purposes
+Flag-based filtering for test accounts
+Rich metadata in comments
+The US database infrastructure provides a comprehensive view of US operations with a similar architectural approach to the UK system but with specialized components for US-specific requirements, especially related to the partner bank model and US regulatory landscape.
+7.11 Data Quality Considerations for US Operations
+7.11.1 Test Account Filtering
+Always exclude test accounts when reporting on US data:
+For US Cards:
+sql
+Copy
+AND a.EXTERNAL_ID NOT IN (
+  SELECT EXTERNAL_ID
+  FROM INT_CARDS_US.INT__CARDS_US__TEST_ACCOUNT
+  WHERE FLAG_FRIEND_FAMILY_ACCOUNT = 0
+)
+For US Loans, use the flags in the main tables:
+sql
+Copy
+WHERE FLAG_TEST_ACCOUNT = 0
+7.11.2 Recent Product Launch Effects
+US Cards launched more recently (2024)
+US Loans has been operational since approximately 2022
+Data volume and patterns differ from more mature UK products
+Historical data limitations due to shorter operating history
+7.11.3 Table Sizing and Query Performance
+Row counts indicate query planning considerations:
+Very large tables to use with care:
+MRT__LOANS_US__PLAID_ASSET_REPORT_TRANSACTIONS (71.7M rows)
+MRT__LOANS_US__PLAID_ASSET_REPORT_HISTORICAL_BALANCES (27.8M rows)
+MRT__PRICING__COMPETITOR_DATA (6.9M rows)
+MRT__PEACH__LOAN_STATUS_SNAPSHOTS (6.0M rows)
+Medium-sized tables that should handle filters first:
+MRT__LOANS_US__LOAN_APPLICATION (2.3M rows)
+MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT (564K rows)
+MRT__CARDS_US__DAILY_BILLED_REVENUE_PER_ACCOUNT (605K rows)
+7.11.4 Data Exclusion Patterns
+Proper exclusions are critical for accurate reporting:
+Multiple types of exclusions exist for different purposes:
+Test accounts (FLAG_TEST_ACCOUNT, FLAG_FRIEND_FAMILY_ACCOUNT)
+Risk management (FLAG_*_EXCLUSIONS)
+Data quality (FLAG_SHARE_RECORDS_EXCLUSIONS)
+Business decisions (FLAG_CREDIT_EXCLUDE, FLAG_ORIGINATION_EXCLUDE)
+Always check documentation or table comments for specific exclusion criteria
+7.12 Differences Between US and UK Data Models
+7.12.1 Structural Differences
+Key differences between US and UK data architectures:
+Database Naming:
+US: Uses database name PROD with schemas like MRT_CARDS_US
+UK: Uses database names like PROD, RAW_PRODUCTION with schemas like MRT_CARDS
+Third-Party Integrations:
+US: Peach, Alloy, Plaid, TransUnion, The Work Number
+UK: Marqeta, Experian, TransUnion, Equifax, Open Banking providers
+Risk Models:
+US Loans: Yukon, Tahoe models
+US Cards: Astrum model
+UK: Gemini, Overlay, Lyra, Hinton, Argus, Level models
+Partner Structure:
+US: Partner bank model (CRB, Continental)
+UK: Direct lending model
+7.12.2 Common Patterns
+Shared architectural approaches:
+Data Transformation Layers:
+Both use STG → INT → MRT → PRS pattern
+Similar table naming conventions with region identifiers
+Asset Tracking:
+Both use daily AUM tracking
+Both have statement performance tracking
+Similar approach to portfolio monitoring
+7.12.3 Query Approach Differences
+When querying across regions:
+US-Specific Syntax:
+US tables often use uppercase column names
+More DATE_TRUNC usage for time series
+More VARIANT data types for complex fields
+UK-Specific Syntax:
+Often uses lowercase or mixed-case column names
+More explicit timestamp formats
+More JOIN complexity across schemas
+7.13 US Data Architecture Evolution
+7.13.1 Database Architecture
+The US database architecture shows evidence of a medallion architecture pattern:
+Bronze Layer:
+BRONZE_PRODUCTION database likely contains raw data
+Minimal transformation from source systems
+Silver Layer:
+SILVER_PRODUCTION database likely contains cleaned/transformed data
+Intermediate transformations
+Gold Layer:
+GOLD_PRODUCTION database likely contains business-ready data
+Final presentation layer equivalent to MRT and PRS in the current structure
+Current Production:
+PROD database contains the active schema structure
+Follows similar pattern to UK with layer prefixes
+7.13.2 Data Transformation Process
+Evidence of dbt (data build tool) usage:
+DBT Process Tracking:
+DBT_RUNS schema
+SRC_DBT_RUNS schema
+STG_DBT_RUNS schema
+DBT_PROJECT_EVALUATOR schema
+Data Quality Management:
+Data testing infrastructure
+Schema evolution tracking
+Version control integration
+7.13.3 Future Expansion Considerations
+The current structure supports growth:
+Scalability:
+Separate US databases can grow independently
+Layer pattern supports increasing data complexity
+Schema naming allows for additional regions
+Cross-Region Reporting:
+Current structure would require separate queries for each region
+Potential for unified reporting layer across regions
+Common metrics but different data sources
+8. Security & Compliance Infrastructure
+8.1 Vulnerability Management
+Infrastructure for regulatory compliance includes:
+8.1.1 Vulnerability Tracking
+MRT__VULNERABILITY_HISTORY__CARDS
+MRT__VULNERABILITY__LOANS
+Tracks customer vulnerability status and changes
+8.1.2 Vulnerability Classification
+Different vulnerability types and categories
+Support measures implemented for each type
+8.2 Fraud & AML
+Anti-fraud and Anti-Money Laundering (AML) infrastructure:
+8.2.1 Fraud Management
+ACTIVE_FRAUD_TAG in account tables
+Fraud case management data
+Fraud risk scoring
+8.2.2 AML Monitoring
+AML report tables
+Financial crime monitoring
+Suspicious activity detection
+9. Credit Decisioning & Underwriting Infrastructure
+9.1 Multiple Credit Bureau Integration
+Sophisticated credit decisioning infrastructure spans multiple tables:
+9.1.1 Bureau Integration Tables
+Experian:
+INT__EXPERIAN_DECISION_RESPONSES__CARDS
+MRT__EXPERIAN_CREDIT_REPORT__LOANS
+TransUnion:
+INT__TU_DECISION_RESPONSES__CARDS
+MRT__TRANSUNION_CREDIT_REPORT__LOANS (contains ADDRESS_POSTCODE)
+Equifax:
+Referenced in insurance policy data
+9.2 Proprietary Scoring Models
+Multiple scoring models are tracked with detailed information:
+9.2.1 Model Suite
+Gemini: GEMINI_SCORE_RAW, GEMINI_SCORE_SCALED, etc.
+Overlay: OVERLAY_SCORE_RAW, OVERLAY_SCORE_SCALED, etc.
+Lyra: LYRA_SCORE_RAW, LYRA_SCORE_SCALED, etc.
+Hinton: HINTON_SCORE_RAW, HINTON_SCORE_SCALED, etc.
+Argus: ARGUS_SCORE_RAW, ARGUS_SCORE_SCALED, etc.
+Level: LEVEL_MODEL_SCORE_RAW, LEVEL_MODEL_SCORE_SCALED, etc.
+9.2.2 Score Components
+For each model:
+Raw scores (direct model output)
+Scaled scores (normalized for business use)
+Binning information (score ranges)
+Cutoffs (decision thresholds)
+Decline flags (automatic rejection indicators)
+9.2.3 Model Monitoring
+PSI (Population Stability Index) tracking tables for models
+PSI data at bin level and overall level
+Tracked weekly and monthly
+9.3 Balance Sheet vs. Marketplace Lending
+The infrastructure supports different lending models:
+9.3.1 Lending Type Distinction
+Underwriting rules distinguish between "balance-sheet-lending" and marketplace lending
+Different approval criteria may apply to each type
+9.3.2 Investor Management
+MRT__INVESTOR_PURCHASES__CARDS: Records investor loan purchases
+MRT__INVESTOR_BALANCES_DISTRIBUTIONS__CARDS: Investor balance and distribution tracking
+Tables for investor balances, purchases and distributions
+Appendix A: Data Dictionary for Key Tables
+A.1 Cards Product Key Tables
+A.1.1 MRT__ACCOUNTS__CARDS
+Primary table for all card accounts with the following key fields:
+ACCOUNT_NUMBER: Unique identifier for the card account
+ACCOUNT_ID: Alternative ID format used across systems
+APPLICATION_ID: Links to the original application
+OPENED_AT: Timestamp of account opening
+STATE: Current account state (e.g., 'active', 'closed')
+CLOSED_AT: Timestamp of account closure
+INITIAL_CREDIT_LIMIT: Starting credit limit in currency units
+INITIAL_APR: Initial Annual Percentage Rate
+A.1.2 MRT__TRANSACTIONS__CARDS
+Contains individual purchase and payment transactions:
+TRANSACTION_ID: Unique identifier for the transaction
+ACCOUNT_ID: Links to the account
+TRANSACTION_DATE: Date the transaction occurred
+AMOUNT: Transaction amount
+TRANSACTION_TYPE: Type of transaction
+MERCHANT_NAME: Name of the merchant
+A.2 Loans Product Key Tables
+A.2.1 MRT__LOAN__LOANS
+Primary table for all loans with the following key fields:
+LOAN_ID: Unique identifier for the loan
+APPLICATION_ID: Links to the original application
+CREATED_AT: When the loan was created
+AMOUNT: Principal loan amount
+TERM: Loan term in months
+APR: Annual Percentage Rate
+STATE: Current loan status
+A.2.2 MRT__REPAYMENT__LOANS
+Records all repayment transactions:
+REPAYMENT_ID: Unique identifier for the repayment
+LOAN_ID: Links to the loan
+REPAYMENT_DATE: Date of repayment
+AMOUNT: Repayment amount
+PAYMENT_METHOD: Method used for payment
+A.3 Motor Finance Key Tables
+A.3.1 hirepurchaseloan
+Central table for auto finance loans:
+id: Primary identifier
+reference: External reference number
+grossAmount: Total loan amount including fees
+netAmount: Principal loan amount excluding fees
+term: Loan term in months
+rate: Interest rate
+apr: Annual Percentage Rate
+monthlyPayment: Contractual monthly payment amount
+state: Current loan status (e.g., "Good Standing", "Late")
+A.3.2 vehicle
+Contains details of financed vehicles:
+id: Primary identifier
+make: Vehicle manufacturer
+model: Vehicle model
+mileage: Recorded mileage
+vrm: Vehicle Registration Mark (license plate)
+vin: Vehicle Identification Number
+Appendix B: Query Examples Library for Common Business Questions
+This library provides example queries for common business questions across products and systems. Each example includes context about when to use it, what system it applies to, and any special considerations.
+Table of Contents
+Customer Acquisition and Growth
+Portfolio Performance
+Risk Management
+Cross-Product Analysis
+Operational Metrics
+Regulatory Reporting
+1. Customer Acquisition and Growth
+1.1 Monthly New Accounts by Product and Region
+Business Need: Track monthly new customer acquisition across products and regions.
+UK Cards Origination (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', OPENED_AT) AS month,
+  POST_CODE_REGION,
+  COUNT(*) AS accounts_originated,
+  SUM(INITIAL_CREDIT_LIMIT) AS total_credit_limit
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE
+  OPENED_AT BETWEEN '2024-01-01' AND '2024-12-31'
+  -- Exclude test accounts
+  AND (SOURCE != 'TEST' OR SOURCE IS NULL)
+GROUP BY 1, 2
+ORDER BY 1, 2;
+UK Loans Origination (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', l.created_at) AS month,
+  u.POSTCODE,
+  COUNT(*) AS loans_originated,
+  SUM(l.amount) AS total_loan_amount
+FROM
+  PROD.MRT_LOANS.MRT__LOAN__LOANS l
+JOIN
+  PROD.MRT_LOANS.MRT__LOANAPPLICATION_USERS__LOANS u
+  ON l.application_id = u.application_id
+WHERE
+  l.created_at BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+UK Motor Finance Origination (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Note: This queries summarized Motor Finance data in Snowflake
+SELECT
+  DATE_TRUNC('month', loan_origination_date) AS month,
+  COUNT(*) AS loans_originated,
+  SUM(gross_amount) AS total_originated
+FROM
+  PROD.MRT_MOTOR.MRT__LOAN__MOTOR
+WHERE
+  state != 'Cancelled'
+  AND loan_origination_date IS NOT NULL
+  AND loan_origination_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY 1;
+US Cards Origination (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+SELECT
+  DATE_TRUNC('month', "OPENED_AT") AS month,
+  "APP_ADDRESS_STATE" AS state,
+  COUNT(*) AS accounts_originated,
+  SUM("INITIAL_CREDIT_LIMIT") AS total_credit_limit
+FROM
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE
+  "OPENED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+  AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0
+  AND "EXTERNAL_ID" NOT IN (
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+GROUP BY 1, 2
+ORDER BY 1, 2;
+US Loans Origination (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+SELECT
+  DATE_TRUNC('month', "ORIGINATED_AT") AS month,
+  "APP_ADDRESS_STATE" AS state,
+  COUNT(*) AS loans_originated,
+  SUM("ORIGINATED_AMOUNT") AS total_loan_amount
+FROM
+  "PROD"."MRT_LOANS_US"."MRT__LOANS_US__LOAN_APPLICATION"
+WHERE
+  "ORIGINATED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+  AND ("FLAG_ORIGINATION_EXCLUDE" = 0 OR "FLAG_ORIGINATION_EXCLUDE" IS NULL)
+GROUP BY 1, 2
+ORDER BY 1, 2;
+1.2 Acquisition Channel Performance
+UK Cards by Acquisition Channel (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  SOURCE AS acquisition_channel,
+  COUNT(*) AS account_count,
+  AVG(INITIAL_CREDIT_LIMIT) AS avg_initial_limit,
+  SUM(CASE WHEN STATE = 'active' THEN 1 ELSE 0 END) / COUNT(*) * 100 AS active_rate
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE
+  OPENED_AT BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY 2 DESC;
+US Loans by Marketing Partner (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+SELECT
+  "UTM_SOURCE" AS acquisition_channel,
+  COUNT(*) AS application_count,
+  COUNT(CASE WHEN "ORIGINATED_AT" IS NOT NULL THEN 1 END) AS funded_count,
+  AVG("ORIGINATED_AMOUNT") AS avg_loan_amount,
+  COUNT(CASE WHEN "ORIGINATED_AT" IS NOT NULL THEN 1 END) / NULLIF(COUNT(*), 0) * 100 AS conversion_rate
+FROM
+  "PROD"."MRT_LOANS_US"."MRT__LOANS_US__LOAN_APPLICATION"
+WHERE
+  "CREATED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+GROUP BY 1
+ORDER BY 2 DESC;
+2. Portfolio Performance
+2.1 Monthly Balance and Revenue Trends by Product
+UK Cards Portfolio Metrics (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Monthly assets under management and revenue for Cards
+WITH month_ends AS (
+  SELECT DISTINCT
+    DATE_TRUNC('month', transaction_date) + INTERVAL '1 month' - INTERVAL '1 day' AS month_end
+  FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+  WHERE transaction_date BETWEEN '2024-01-01' AND '2024-12-31'
+),
+balances AS (
+  SELECT
+    DATE_TRUNC('month', transaction_date) AS month,
+    SUM(CASE WHEN transaction_type = 'BALANCE' THEN amount ELSE 0 END) AS month_end_balance
+  FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+  JOIN month_ends ON DATE_TRUNC('day', transaction_date) = month_ends.month_end
+  GROUP BY 1
+  ORDER BY 1
+),
+revenue AS (
+  SELECT
+    DATE_TRUNC('month', transaction_date) AS month,
+    SUM(CASE WHEN transaction_type = 'INTEREST' THEN amount ELSE 0 END) AS interest_revenue,
+    SUM(CASE WHEN transaction_type = 'FEE' THEN amount ELSE 0 END) AS fee_revenue
+  FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+  WHERE transaction_date BETWEEN '2024-01-01' AND '2024-12-31'
+  GROUP BY 1
+  ORDER BY 1
+)
+SELECT
+  b.month,
+  b.month_end_balance,
+  r.interest_revenue,
+  r.fee_revenue,
+  r.interest_revenue + r.fee_revenue AS total_revenue,
+  CASE WHEN b.month_end_balance > 0
+       THEN (r.interest_revenue + r.fee_revenue) / b.month_end_balance * 100 * 12
+       ELSE NULL END AS annualized_yield_pct
+FROM balances b
+JOIN revenue r ON b.month = r.month
+ORDER BY b.month;
+US Cards Daily AUM and Revenue (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+WITH daily_revenue AS (
+  SELECT
+    DATE_TRUNC('month', "day") AS month,
+    SUM("billed_interest") AS total_interest,
+    SUM("billed_fees") AS total_fees,
+    SUM("billed_interest" + "billed_fees") AS total_revenue
+  FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__DAILY_BILLED_REVENUE_PER_ACCOUNT"
+  WHERE "EXTERNAL_ID" NOT IN (
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+  GROUP BY DATE_TRUNC('month', "day")
+),
+monthly_aum AS (
+  SELECT
+    DATE_TRUNC('month', "day") AS month,
+    AVG(SUM("balance_end")) OVER (PARTITION BY DATE_TRUNC('month', "day")) AS avg_monthly_balance
+  FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT"
+  WHERE "EXTERNAL_ID" NOT IN (
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+  GROUP BY DATE_TRUNC('month', "day")
+)
+SELECT
+  dr.month,
+  dr.total_interest,
+  dr.total_fees,
+  dr.total_revenue,
+  ma.avg_monthly_balance,
+  dr.total_interest / NULLIF(ma.avg_monthly_balance, 0) * 100 * 12 AS annualized_interest_yield_pct,
+  dr.total_revenue / NULLIF(ma.avg_monthly_balance, 0) * 100 * 12 AS annualized_total_yield_pct
+FROM daily_revenue dr
+JOIN monthly_aum ma ON dr.month = ma.month
+ORDER BY dr.month;
+UK Loans Repayment Performance (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', r.repayment_date) AS month,
+  COUNT(DISTINCT l.loan_id) AS active_loans,
+  SUM(r.amount) AS total_repayment_amount,
+  COUNT(CASE WHEN r.amount >= l.scheduled_repayment_amount THEN l.loan_id END) AS on_time_payments,
+  COUNT(DISTINCT r.loan_id) AS loans_with_payments,
+  COUNT(CASE WHEN r.amount >= l.scheduled_repayment_amount THEN l.loan_id END) /
+    NULLIF(COUNT(DISTINCT r.loan_id), 0) * 100 AS on_time_payment_pct
+FROM PROD.MRT_LOANS.MRT__LOAN__LOANS l
+JOIN PROD.MRT_LOANS.MRT__REPAYMENT__LOANS r
+  ON l.loan_id = r.loan_id
+WHERE r.repayment_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY 1;
+2.2 Delinquency and Collections Reporting
+UK Cards Delinquency Trends (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Monthly delinquency rates for Cards
+SELECT
+  DATE_TRUNC('month', CURRENT_DATE()) AS reporting_date,
+  COUNT(DISTINCT ACCOUNT_ID) AS total_accounts,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_1_29' THEN ACCOUNT_ID END) AS delinquent_1_29,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_30_59' THEN ACCOUNT_ID END) AS delinquent_30_59,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_60_89' THEN ACCOUNT_ID END) AS delinquent_60_89,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_90_plus' THEN ACCOUNT_ID END) AS delinquent_90_plus,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_1_29' THEN ACCOUNT_ID END) /
+    NULLIF(COUNT(DISTINCT ACCOUNT_ID), 0) * 100 AS delinquent_1_29_pct,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_30_59' THEN ACCOUNT_ID END) /
+    NULLIF(COUNT(DISTINCT ACCOUNT_ID), 0) * 100 AS delinquent_30_59_pct,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_60_89' THEN ACCOUNT_ID END) /
+    NULLIF(COUNT(DISTINCT ACCOUNT_ID), 0) * 100 AS delinquent_60_89_pct,
+  COUNT(DISTINCT CASE WHEN STATE = 'delinquent_90_plus' THEN ACCOUNT_ID END) /
+    NULLIF(COUNT(DISTINCT ACCOUNT_ID), 0) * 100 AS delinquent_90_plus_pct
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE OPENED_AT <= CURRENT_DATE() AND (CLOSED_AT IS NULL OR CLOSED_AT > CURRENT_DATE())
+GROUP BY 1;
+UK Loans Collections Flags (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', flag_date) AS month,
+  COUNT(DISTINCT loan_id) AS total_loans,
+  COUNT(DISTINCT CASE WHEN days_past_due BETWEEN 1 AND 30 THEN loan_id END) AS dpd_1_30,
+  COUNT(DISTINCT CASE WHEN days_past_due BETWEEN 31 AND 60 THEN loan_id END) AS dpd_31_60,
+  COUNT(DISTINCT CASE WHEN days_past_due BETWEEN 61 AND 90 THEN loan_id END) AS dpd_61_90,
+  COUNT(DISTINCT CASE WHEN days_past_due > 90 THEN loan_id END) AS dpd_90_plus,
+  COUNT(DISTINCT CASE WHEN days_past_due BETWEEN 1 AND 30 THEN loan_id END) /
+    NULLIF(COUNT(DISTINCT loan_id), 0) * 100 AS dpd_1_30_pct,
+  COUNT(DISTINCT CASE WHEN days_past_due BETWEEN 31 AND 60 THEN loan_id END) /
+    NULLIF(COUNT(DISTINCT loan_id), 0) * 100 AS dpd_31_60_pct,
+  COUNT(DISTINCT CASE WHEN days_past_due BETWEEN 61 AND 90 THEN loan_id END) /
+    NULLIF(COUNT(DISTINCT loan_id), 0) * 100 AS dpd_61_90_pct,
+  COUNT(DISTINCT CASE WHEN days_past_due > 90 THEN loan_id END) /
+    NULLIF(COUNT(DISTINCT loan_id), 0) * 100 AS dpd_90_plus_pct
+FROM PROD.MRT_LOANS.MRT__DAILY_COLLECTIONS_FLAGS__LOANS
+WHERE flag_date = LAST_DAY(DATE_TRUNC('month', flag_date))
+  AND flag_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY 1;
+UK Motor Finance Arrears (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Note: This queries summarized Motor Finance data in Snowflake
+SELECT
+  snapshot_date,
+  COUNT(DISTINCT loan_id) AS total_loans,
+  COUNT(DISTINCT CASE WHEN state = 'Late' THEN loan_id END) AS delinquent_loans,
+  SUM(CASE WHEN state = 'Late' THEN principal_outstanding ELSE 0 END) AS delinquent_balance,
+  COUNT(DISTINCT CASE WHEN state = 'Late' THEN loan_id END) /
+    NULLIF(COUNT(DISTINCT loan_id), 0) * 100 AS delinquency_rate_pct,
+  SUM(CASE WHEN state = 'Late' THEN principal_outstanding ELSE 0 END) /
+    NULLIF(SUM(principal_outstanding), 0) * 100 AS delinquent_balance_pct
+FROM PROD.MRT_MOTOR.MRT__DAILY_SNAPSHOT__MOTOR
+WHERE snapshot_date = LAST_DAY(DATE_TRUNC('month', snapshot_date))
+  AND snapshot_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY 1;
+3. Risk Management
+3.1 Credit Score Distribution by Product
+UK Cards Credit Score Distribution (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  CASE
+    WHEN GEMINI_SCORE_SCALED BETWEEN 0 AND 300 THEN 'Low (0-300)'
+    WHEN GEMINI_SCORE_SCALED BETWEEN 301 AND 600 THEN 'Medium (301-600)'
+    WHEN GEMINI_SCORE_SCALED BETWEEN 601 AND 900 THEN 'High (601-900)'
+    ELSE 'Unknown'
+  END AS score_band,
+  COUNT(*) AS account_count,
+  AVG(INITIAL_CREDIT_LIMIT) AS avg_initial_limit,
+  SUM(CASE WHEN STATE = 'active' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100 AS active_rate
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE OPENED_AT BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY
+  CASE
+    WHEN score_band = 'Low (0-300)' THEN 1
+    WHEN score_band = 'Medium (301-600)' THEN 2
+    WHEN score_band = 'High (601-900)' THEN 3
+    ELSE 4
+  END;
+
+US Loans Credit Score Distribution (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+SELECT
+  CASE
+    WHEN "VANTAGE_SCORE" BETWEEN 300 AND 600 THEN 'Low (300-600)'
+    WHEN "VANTAGE_SCORE" BETWEEN 601 AND 700 THEN 'Medium (601-700)'
+    WHEN "VANTAGE_SCORE" BETWEEN 701 AND 850 THEN 'High (701-850)'
+    ELSE 'Unknown'
+  END AS score_band,
+  COUNT(*) AS loan_count,
+  AVG("ORIGINATED_AMOUNT") AS avg_loan_amount,
+  SUM(CASE WHEN "ORIGINATED_AT" IS NOT NULL THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100 AS funded_rate
+FROM "PROD"."MRT_LOANS_US"."MRT__LOANS_US__LOAN_APPLICATION"
+WHERE "CREATED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+GROUP BY 1
+ORDER BY
+  CASE
+    WHEN score_band = 'Low (300-600)' THEN 1
+    WHEN score_band = 'Medium (601-700)' THEN 2
+    WHEN score_band = 'High (701-850)' THEN 3
+    ELSE 4
+  END;
+3.2 Vintage Analysis for Delinquency Trends
+UK Cards Vintage Delinquency (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+WITH account_cohorts AS (
+  SELECT
+    ACCOUNT_ID,
+    DATE_TRUNC('month', OPENED_AT) AS cohort_month
+  FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+  WHERE OPENED_AT BETWEEN '2023-01-01' AND '2024-12-31'
+),
+delinquency_status AS (
+  SELECT
+    a.ACCOUNT_ID,
+    c.cohort_month,
+    DATEDIFF('month', c.cohort_month, d.flag_date) AS months_on_book,
+    d.flag_date,
+    d.days_past_due
+  FROM account_cohorts c
+  JOIN PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a ON c.ACCOUNT_ID = a.ACCOUNT_ID
+  JOIN PROD.MRT_CARDS.MRT__DAILY_COLLECTIONS_FLAGS__CARDS d ON a.ACCOUNT_ID = d.ACCOUNT_ID
+  WHERE d.flag_date = LAST_DAY(DATE_TRUNC('month', d.flag_date))
+)
+SELECT
+  cohort_month,
+  months_on_book,
+  COUNT(DISTINCT ACCOUNT_ID) AS accounts_in_cohort,
+  COUNT(DISTINCT CASE WHEN days_past_due > 30 THEN ACCOUNT_ID END) AS delinquent_30_plus,
+  COUNT(DISTINCT CASE WHEN days_past_due > 30 THEN ACCOUNT_ID END) /
+    NULLIF(COUNT(DISTINCT ACCOUNT_ID), 0) * 100 AS delinquent_30_plus_pct
+FROM delinquency_status
+WHERE months_on_book BETWEEN 0 AND 12
+GROUP BY 1, 2
+ORDER BY 1, 2;
+UK Loans Vintage Analysis (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+WITH loan_cohorts AS (
+  SELECT
+    loan_id,
+    DATE_TRUNC('month', created_at) AS cohort_month
+  FROM PROD.MRT_LOANS.MRT__LOAN__LOANS
+  WHERE created_at BETWEEN '2023-01-01' AND '2024-12-31'
+),
+delinquency_status AS (
+  SELECT
+    l.loan_id,
+    c.cohort_month,
+    DATEDIFF('month', c.cohort_month, d.flag_date) AS months_on_book,
+    d.flag_date,
+    d.days_past_due
+  FROM loan_cohorts c
+  JOIN PROD.MRT_LOANS.MRT__LOAN__LOANS l ON c.loan_id = l.loan_id
+  JOIN PROD.MRT_LOANS.MRT__DAILY_COLLECTIONS_FLAGS__LOANS d ON l.loan_id = d.loan_id
+  WHERE d.flag_date = LAST_DAY(DATE_TRUNC('month', d.flag_date))
+)
+SELECT
+  cohort_month,
+  months_on_book,
+  COUNT(DISTINCT loan_id) AS loans_in_cohort,
+  COUNT(DISTINCT CASE WHEN days_past_due > 30 THEN loan_id END) AS delinquent_30_plus,
+  COUNT(DISTINCT CASE WHEN days_past_due > 30 THEN loan_id END) /
+    NULLIF(COUNT(DISTINCT loan_id), 0) * 100 AS delinquent_30_plus_pct
+FROM delinquency_status
+WHERE months_on_book BETWEEN 0 AND 12
+GROUP BY 1, 2
+ORDER BY 1, 2;
+4. Cross-Product Analysis
+4.1 Customer Overlap Across Products
+UK Product Overlap - Cards and Loans (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Find customers with both cards and loans using hashed identifiers
+WITH cards_customers AS (
+  SELECT
+    EMAIL_HASH,
+    MOBILE_NUMBER_HASH,
+    DATE_OF_BIRTH_HASH,
+    ACCOUNT_ID,
+    'CARD' AS product_type,
+    OPENED_AT AS product_start_date,
+    STATE AS product_status
+  FROM
+    PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+  WHERE
+    STATE != 'cancelled'
+),
+loans_customers AS (
+  SELECT
+    u.email_hash,
+    u.mobile_hash,
+    u.date_of_birth_hash,
+    l.loan_id,
+    'LOAN' AS product_type,
+    l.created_at AS product_start_date,
+    l.state AS product_status
+  FROM
+    PROD.MRT_LOANS.MRT__LOAN__LOANS l
+  JOIN
+    PROD.MRT_LOANS.MRT__LOANAPPLICATION_USERS__LOANS u
+    ON l.application_id = u.application_id
+  WHERE
+    l.state != 'cancelled'
+)
+SELECT
+  CASE
+    WHEN c.EMAIL_HASH IS NOT NULL AND l.email_hash IS NOT NULL THEN 'Both Products'
+    WHEN c.EMAIL_HASH IS NOT NULL THEN 'Cards Only'
+    WHEN l.email_hash IS NOT NULL THEN 'Loans Only'
+  END AS product_ownership,
+  COUNT(DISTINCT COALESCE(c.EMAIL_HASH, l.email_hash)) AS customer_count
+FROM
+  (SELECT EMAIL_HASH FROM cards_customers
+   UNION
+   SELECT email_hash FROM loans_customers) all_customers
+LEFT JOIN cards_customers c ON all_customers.EMAIL_HASH = c.EMAIL_HASH
+LEFT JOIN loans_customers l ON all_customers.EMAIL_HASH = l.email_hash
+GROUP BY 1
+ORDER BY 3 DESC;
+UK Cross-Product Customer Base using Open Banking Data (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Using the Open Banking cross-product base to identify customers across products
+SELECT
+  cp.product_ownership,
+  COUNT(DISTINCT cp.customer_id) AS customer_count
+FROM
+  PROD.MRT_OPENBANKING.MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING cp
+GROUP BY 1
+ORDER BY 2 DESC;
+4.2 Cross-Product Customer Journey Analysis
+UK Customer Product Adoption Sequence (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Analyze which product customers tend to adopt first
+WITH customer_products AS (
+  -- Cards customers
+  SELECT
+    EMAIL_HASH AS customer_id,
+    'Cards' AS first_product,
+    OPENED_AT AS first_product_date
+  FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+  WHERE EMAIL_HASH IS NOT NULL
+  
+  UNION ALL
+  
+  -- Loans customers
+  SELECT
+    email_hash AS customer_id,
+    'Loans' AS first_product,
+    l.created_at AS first_product_date
+  FROM PROD.MRT_LOANS.MRT__LOAN__LOANS l
+  JOIN PROD.MRT_LOANS.MRT__LOANAPPLICATION_USERS__LOANS u
+    ON l.application_id = u.application_id
+  WHERE email_hash IS NOT NULL
+  
+  UNION ALL
+  
+  -- Motor Finance customers via cross-product base
+  SELECT
+    email_hash AS customer_id,
+    'Motor Finance' AS first_product,
+    product_start_date AS first_product_date
+  FROM PROD.MRT_OPENBANKING.MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING
+  WHERE product_type = 'MOTOR' AND email_hash IS NOT NULL
+),
+first_product_per_customer AS (
+  SELECT
+    customer_id,
+    FIRST_VALUE(first_product) OVER (
+      PARTITION BY customer_id
+      ORDER BY first_product_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS first_product
+  FROM customer_products
+)
+SELECT
+  first_product,
+  COUNT(DISTINCT customer_id) AS customer_count,
+  COUNT(DISTINCT customer_id) / SUM(COUNT(DISTINCT customer_id)) OVER () * 100 AS percentage
+FROM first_product_per_customer
+GROUP BY 1
+ORDER BY 2 DESC;
+5. Operational Metrics
+5.1 Application Funnel Analysis
+UK Cards Application Funnel (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+WITH application_stages AS (
+  SELECT
+    a.APPLICATION_ID,
+    a.CREATED_AT AS application_date,
+    a.STATE AS application_state,
+    acc.ACCOUNT_ID,
+    acc.OPENED_AT AS account_open_date,
+    CASE
+      WHEN a.STATE = 'declined' THEN 'Declined'
+      WHEN a.STATE = 'cancelled' THEN 'Cancelled'
+      WHEN a.STATE = 'expired' THEN 'Expired'
+      WHEN acc.ACCOUNT_ID IS NOT NULL THEN 'Approved'
+      ELSE 'In Progress'
+    END AS funnel_stage
+  FROM PROD.MRT_CARDS.MRT__APPLICATIONS__CARDS a
+  LEFT JOIN PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS acc
+    ON a.APPLICATION_ID = acc.APPLICATION_ID
+  WHERE a.CREATED_AT BETWEEN '2024-01-01' AND '2024-12-31'
+)
+SELECT
+  DATE_TRUNC('month', application_date) AS month,
+  COUNT(DISTINCT APPLICATION_ID) AS total_applications,
+  COUNT(DISTINCT CASE WHEN funnel_stage = 'Approved' THEN APPLICATION_ID END) AS approved_applications,
+  COUNT(DISTINCT CASE WHEN funnel_stage = 'Declined' THEN APPLICATION_ID END) AS declined_applications,
+  COUNT(DISTINCT CASE WHEN funnel_stage = 'Cancelled' THEN APPLICATION_ID END) AS cancelled_applications,
+  COUNT(DISTINCT CASE WHEN funnel_stage = 'Expired' THEN APPLICATION_ID END) AS expired_applications,
+  COUNT(DISTINCT CASE WHEN funnel_stage = 'In Progress' THEN APPLICATION_ID END) AS in_progress_applications,
+  COUNT(DISTINCT CASE WHEN funnel_stage = 'Approved' THEN APPLICATION_ID END) /
+    NULLIF(COUNT(DISTINCT APPLICATION_ID), 0) * 100 AS approval_rate_pct
+FROM application_stages
+GROUP BY 1
+ORDER BY 1;
+US Loans Application Funnel (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+SELECT
+  DATE_TRUNC('month', "CREATED_AT") AS month,
+  COUNT(*) AS total_applications,
+  COUNT(CASE WHEN "QUOTED_AT" IS NOT NULL THEN 1 END) AS quoted,
+  COUNT(CASE WHEN "REQUIREMENTS_STARTED_AT" IS NOT NULL THEN 1 END) AS started_requirements,
+  COUNT(CASE WHEN "REQUIREMENTS_SUBMITTED_AT" IS NOT NULL THEN 1 END) AS submitted_requirements,
+  COUNT(CASE WHEN "REQUIREMENTS_PASSED_AT" IS NOT NULL THEN 1 END) AS passed_requirements,
+  COUNT(CASE WHEN "ORIGINATED_AT" IS NOT NULL THEN 1 END) AS funded_loans,
+  COUNT(CASE WHEN "DECLINED_AT" IS NOT NULL THEN 1 END) AS declined,
+  COUNT(CASE WHEN "TIMES_OUT_AT" IS NOT NULL THEN 1 END) AS timed_out,
+  COUNT(CASE WHEN "ORIGINATED_AT" IS NOT NULL THEN 1 END) /
+    NULLIF(COUNT(*), 0) * 100 AS funding_rate_pct,
+  COUNT(CASE WHEN "DECLINED_AT" IS NOT NULL THEN 1 END) /
+    NULLIF(COUNT(*), 0) * 100 AS decline_rate_pct
+FROM "PROD"."MRT_LOANS_US"."MRT__LOANS_US__LOAN_APPLICATION"
+WHERE "CREATED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+GROUP BY 1
+ORDER BY 1;
+5.2 Transaction Processing Metrics
+UK Cards Transaction Volume and Type (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', transaction_date) AS month,
+  transaction_type,
+  COUNT(*) AS transaction_count,
+  SUM(amount) AS transaction_amount,
+  AVG(amount) AS average_transaction_amount
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+WHERE transaction_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+UK Cards Merchant Category Analysis (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  merchant_category,
+  COUNT(*) AS transaction_count,
+  SUM(amount) AS total_amount,
+  AVG(amount) AS average_amount,
+  COUNT(*) / SUM(COUNT(*)) OVER () * 100 AS transaction_percent
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+WHERE transaction_date BETWEEN '2024-01-01' AND '2024-12-31'
+  AND transaction_type = 'PURCHASE'
+GROUP BY 1
+ORDER BY 2 DESC;
+5.3 Call Center and Customer Service Metrics
+UK Customer Service Case Analysis (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', case_created_date) AS month,
+  case_type,
+  COUNT(*) AS total_cases,
+  AVG(DATEDIFF('minute', case_created_date, case_resolved_date)) AS avg_resolution_time_minutes,
+  COUNT(CASE WHEN DATEDIFF('hour', case_created_date, case_resolved_date) <= 24 THEN 1 END) /
+    NULLIF(COUNT(*), 0) * 100 AS resolved_within_24hr_pct,
+  COUNT(CASE WHEN case_status = 'Closed' THEN 1 END) /
+    NULLIF(COUNT(*), 0) * 100 AS closure_rate_pct
+FROM PROD.MRT_CUSTOMER_SERVICE.MRT__CUSTOMER_SERVICE_CASES
+WHERE case_created_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 3 DESC;
+6. Regulatory Reporting
+6.1 Vulnerability Reporting
+UK Cards Vulnerability Tracking (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', vulnerability_start_date) AS month,
+  vulnerability_type,
+  COUNT(DISTINCT ACCOUNT_ID) AS vulnerable_accounts,
+  COUNT(DISTINCT ACCOUNT_ID) / (
+    SELECT COUNT(DISTINCT ACCOUNT_ID)
+    FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+    WHERE STATE = 'active'
+  ) * 100 AS percent_of_active_accounts,
+  AVG(DATEDIFF('day', vulnerability_start_date,
+    COALESCE(vulnerability_end_date, CURRENT_DATE()))) AS avg_duration_days
+FROM PROD.MRT_CARDS.MRT__VULNERABILITY_HISTORY__CARDS
+WHERE vulnerability_start_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 3 DESC;
+UK Loans Vulnerability Analysis (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', vulnerability_start_date) AS month,
+  vulnerability_type,
+  COUNT(DISTINCT loan_id) AS vulnerable_loans,
+  COUNT(DISTINCT loan_id) / (
+    SELECT COUNT(DISTINCT loan_id)
+    FROM PROD.MRT_LOANS.MRT__LOAN__LOANS
+    WHERE state = 'current'
+  ) * 100 AS percent_of_current_loans,
+  AVG(DATEDIFF('day', vulnerability_start_date,
+    COALESCE(vulnerability_end_date, CURRENT_DATE()))) AS avg_duration_days
+FROM PROD.MRT_LOANS.MRT__VULNERABILITY__LOANS
+WHERE vulnerability_start_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1, 2
+ORDER BY 1, 3 DESC;
+6.2 Anti-Money Laundering (AML) Monitoring
+UK Cards AML Alert Analysis (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  DATE_TRUNC('month', alert_date) AS month,
+  alert_type,
+  alert_severity,
+  COUNT(*) AS alert_count,
+  COUNT(CASE WHEN investigation_outcome = 'Suspicious' THEN 1 END) AS suspicious_count,
+  COUNT(CASE WHEN investigation_outcome = 'False Positive' THEN 1 END) AS false_positive_count,
+  AVG(DATEDIFF('hour', alert_date, investigation_start_date)) AS avg_hours_to_investigate,
+  COUNT(CASE WHEN investigation_outcome = 'Suspicious' THEN 1 END) /
+    NULLIF(COUNT(*), 0) * 100 AS suspicious_rate_pct
+FROM PROD.MRT_COMPLIANCE.MRT__AML_ALERTS
+WHERE alert_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY 1, 2, 3
+ORDER BY 1, 4 DESC;
+6.3 Regulatory Compliance Metrics
+UK Cards Regulatory Reporting (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+SELECT
+  reporting_date,
+  reporting_metric,
+  metric_value,
+  threshold_value,
+  CASE WHEN metric_value > threshold_value THEN 'Exceeded' ELSE 'Within Limits' END AS threshold_status
+FROM PROD.MRT_COMPLIANCE.MRT__REGULATORY_METRICS
+WHERE reporting_date BETWEEN '2024-01-01' AND '2024-12-31'
+  AND product_type = 'Cards'
+ORDER BY 1, 2;
+US Loans Regulatory Reporting (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+SELECT
+  "reporting_date",
+  "metric_name",
+  "metric_value",
+  "threshold",
+  CASE WHEN "metric_value" > "threshold" THEN 'Exceeded' ELSE 'Within Limits' END AS threshold_status
+FROM "PROD"."MRT_COMPLIANCE_US"."MRT__REGULATORY_REPORTING"
+WHERE "reporting_date" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "product" = 'Loans'
+ORDER BY 1, 2;
+7. System-Specific Query Patterns
+7.1 Snowflake-Specific Query Patterns (UK)
+Finding Database Objects in Snowflake
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- List all databases
+SHOW DATABASES;
+
+-- List all schemas in the PROD database
+SHOW SCHEMAS IN DATABASE PROD;
+
+-- List all tables in the MRT_CARDS schema
+SHOW TABLES IN SCHEMA PROD.MRT_CARDS;
+
+-- View column definitions for the accounts table
+DESCRIBE TABLE PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+Working with Schema Layers in Snowflake
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Find all tables in the MRT (Mart) layer across schemas
+SELECT
+  table_catalog AS database_name,
+  table_schema AS schema_name,
+  table_name,
+  row_count
+FROM PROD.INFORMATION_SCHEMA.TABLES
+WHERE table_schema LIKE 'MRT\\_%'
+ORDER BY table_schema, table_name;
+
+-- Find all tables in the STG (Staging) layer across schemas
+SELECT
+  table_catalog AS database_name,
+  table_schema AS schema_name,
+  table_name,
+  row_count
+FROM PROD.INFORMATION_SCHEMA.TABLES
+WHERE table_schema LIKE 'STG\\_%'
+ORDER BY table_schema, table_name;
+Snowflake Query Optimization Techniques
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Example of optimized query with proper filtering sequence
+SELECT
+  a.ACCOUNT_ID,
+  a.OPENED_AT,
+  COUNT(t.transaction_id) AS transaction_count,
+  SUM(t.amount) AS total_amount
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a -- Smaller table first
+LEFT JOIN PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t -- Larger table second
+  ON a.ACCOUNT_ID = t.ACCOUNT_ID
+  AND t.transaction_date BETWEEN '2024-01-01' AND '2024-01-31' -- Filter large table before joining
+WHERE a.OPENED_AT > '2023-01-01' -- Filter smaller table
+GROUP BY a.ACCOUNT_ID, a.OPENED_AT;
+7.2 Superset-Specific Query Patterns (US)
+Schema Selection in Superset
+sql
+Copy
+-- Use with US VPN, Superset system
+-- Note: In Superset, you must select the appropriate schema from the dropdown menu first
+-- Then you can run queries against tables in that schema
+
+-- List tables in the selected schema
+SELECT table_name
+FROM "PROD"."INFORMATION_SCHEMA"."TABLES"
+WHERE table_schema = 'MRT_CARDS_US'
+LIMIT 20;
+Handling Quotes in Column Names in Superset
+sql
+Copy
+-- Use with US VPN, Superset system
+-- Note: Column names with capital letters need double quotes in Superset
+SELECT
+  "ACCOUNT_ID",
+  "OPENED_AT",
+  "STATE",
+  "INITIAL_CREDIT_LIMIT"
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE "OPENED_AT" > '2024-01-01'
+  AND "FLAG_TEST_ACCOUNT" = 0
+LIMIT 100;
+Test Account Filtering in Superset
+sql
+Copy
+-- Use with US VPN, Superset system
+-- Proper test account exclusion is critical for US data
+SELECT
+  DATE_TRUNC('month', "OPENED_AT") AS month,
+  COUNT(*) AS new_accounts
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE "OPENED_AT" > '2024-01-01'
+  -- Test account exclusion method 1: direct flag
+  AND "FLAG_TEST_ACCOUNT" = 0
+  AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0
+  -- Test account exclusion method 2: reference table
+  AND "EXTERNAL_ID" NOT IN (
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+GROUP BY DATE_TRUNC('month', "OPENED_AT")
+ORDER BY month;
+8. Advanced Cross-Schema Examples
+8.1 Joining Across UK Product Schemas
+UK Cross-Product Customer Balance Analysis (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Complex join across product schemas to get total customer exposure
+WITH card_balances AS (
+  SELECT
+    EMAIL_HASH,
+    ACCOUNT_ID,
+    'Card' AS product_type,
+    -- This would need to be adapted based on how balances are stored
+    (SELECT amount
+     FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+     WHERE ACCOUNT_ID = a.ACCOUNT_ID
+       AND transaction_type = 'BALANCE'
+     ORDER BY transaction_date DESC
+     LIMIT 1) AS current_balance
+  FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+  WHERE STATE = 'active'
+),
+loan_balances AS (
+  SELECT
+    u.email_hash AS EMAIL_HASH,
+    l.loan_id,
+    'Loan' AS product_type,
+    l.outstanding_principal AS current_balance
+  FROM PROD.MRT_LOANS.MRT__LOAN__LOANS l
+  JOIN PROD.MRT_LOANS.MRT__LOANAPPLICATION_USERS__LOANS u
+    ON l.application_id = u.application_id
+  WHERE l.state = 'current'
+),
+all_balances AS (
+  SELECT * FROM card_balances
+  UNION ALL
+  SELECT * FROM loan_balances
+)
+SELECT
+  EMAIL_HASH,
+  COUNT(DISTINCT CASE WHEN product_type = 'Card' THEN loan_id END) AS card_count,
+  COUNT(DISTINCT CASE WHEN product_type = 'Loan' THEN loan_id END) AS loan_count,
+  SUM(CASE WHEN product_type = 'Card' THEN current_balance ELSE 0 END) AS total_card_balance,
+  SUM(CASE WHEN product_type = 'Loan' THEN current_balance ELSE 0 END) AS total_loan_balance,
+  SUM(current_balance) AS total_exposure
+FROM all_balances
+GROUP BY 1
+ORDER BY 6 DESC
+LIMIT 1000;
+8.2 Combining UK and US Data for Global Reporting
+Global Portfolio Metrics (Combined Query)
+sql
+Copy
+-- Note: This requires separate queries in each system and manual combination
+
+-- UK portion (run in Snowflake with UK VPN)
+SELECT
+  'UK' AS region,
+  'Cards' AS product,
+  COUNT(DISTINCT ACCOUNT_ID) AS active_accounts,
+  SUM(CASE
+      WHEN transaction_type = 'BALANCE' THEN amount
+      ELSE 0
+    END) AS total_balance
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+JOIN PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t
+  ON a.ACCOUNT_ID = t.ACCOUNT_ID
+WHERE a.STATE = 'active'
+  AND t.transaction_date = (
+    SELECT MAX(transaction_date)
+    FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS
+    WHERE transaction_type = 'BALANCE'
+  )
+UNION ALL
+SELECT
+  'UK' AS region,
+  'Loans' AS product,
+  COUNT(DISTINCT loan_id) AS active_accounts,
+  SUM(outstanding_principal) AS total_balance
+FROM PROD.MRT_LOANS.MRT__LOAN__LOANS
+WHERE state = 'current';
+
+-- US portion (run in Superset with US VPN)
+SELECT
+  'US' AS region,
+  'Cards' AS product,
+  COUNT(DISTINCT "ACCOUNT_ID") AS active_accounts,
+  SUM("balance_end") AS total_balance
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT"
+WHERE "day" = (
+    SELECT MAX("day")
+    FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT"
+  )
+  AND "EXTERNAL_ID" NOT IN (
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+UNION ALL
+SELECT
+  'US' AS region,
+  'Loans' AS product,
+  COUNT(DISTINCT "EXTERNAL_ID") AS active_accounts,
+  SUM("principal_outstanding") AS total_balance
+FROM "PROD"."MRT_LOANS_US"."MRT__PEACH__LOAN_STATUS_SNAPSHOTS"
+WHERE "snapshot_date" = (
+    SELECT MAX("snapshot_date")
+    FROM "PROD"."MRT_LOANS_US"."MRT__PEACH__LOAN_STATUS_SNAPSHOTS"
+  )
+  AND "FLAG_TEST_ACCOUNT" = 0;
+
+-- The results must be combined manually or through a reporting tool
+9. Data Quality Validation Queries
+9.1 Referential Integrity Checks
+UK Cards Referential Integrity (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Check for orphaned transactions (transactions without a valid account)
+SELECT
+  COUNT(*) AS orphaned_transactions
+FROM PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t
+LEFT JOIN PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+  ON t.ACCOUNT_ID = a.ACCOUNT_ID
+WHERE a.ACCOUNT_ID IS NULL;
+
+-- Check for orphaned accounts (accounts without a valid application)
+SELECT
+  COUNT(*) AS orphaned_accounts
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+LEFT JOIN PROD.MRT_CARDS.MRT__APPLICATIONS__CARDS app
+  ON a.APPLICATION_ID = app.APPLICATION_ID
+WHERE app.APPLICATION_ID IS NULL;
+9.2 Data Completeness Checks
+UK Loans Data Completeness (Snowflake)
+sql
+Copy
+-- Use with UK VPN, Snowflake system
+-- Check for completeness of key fields
+SELECT
+  COUNT(*) AS total_loans,
+  COUNT(CASE WHEN loan_id IS NULL THEN 1 END) AS missing_loan_id,
+  COUNT(CASE WHEN amount IS NULL THEN 1 END) AS missing_amount,
+  COUNT(CASE WHEN term IS NULL THEN 1 END) AS missing_term,
+  COUNT(CASE WHEN apr IS NULL THEN 1 END) AS missing_apr,
+  COUNT(CASE WHEN created_at IS NULL THEN 1 END) AS missing_created_at,
+  COUNT(CASE WHEN state IS NULL THEN 1 END) AS missing_state,
+  COUNT(CASE WHEN interest_rate IS NULL THEN 1 END) AS missing_interest_rate
+FROM PROD.MRT_LOANS.MRT__LOAN__LOANS;
+9.3 Data Consistency Checks
+US Cards Data Consistency (Superset)
+sql
+Copy
+-- Use with US VPN, Superset system
+-- Check for consistency between account and transaction data
+WITH account_counts AS (
+  SELECT
+    COUNT(DISTINCT "ACCOUNT_ID") AS total_accounts
+  FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+  WHERE "STATE" = 'active'
+    AND "FLAG_TEST_ACCOUNT" = 0
+),
+transaction_accounts AS (
+  SELECT
+    COUNT(DISTINCT "ACCOUNT_ID") AS accounts_with_transactions
+  FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT"
+  WHERE "day" > DATEADD('day', -30, CURRENT_DATE())
+    AND "EXTERNAL_ID" NOT IN (
+      SELECT "EXTERNAL_ID"
+      FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+    )
+)
+SELECT
+  a.total_accounts,
+  t.accounts_with_transactions,
+  a.total_accounts - t.accounts_with_transactions AS accounts_without_recent_transactions,
+  (a.total_accounts - t.accounts_with_transactions) / NULLIF(a.total_accounts, 0) * 100 AS percent_without_transactions
+FROM account_counts a
+CROSS JOIN transaction_accounts t;
+This comprehensive query library provides a foundation for accessing and analyzing data across the Lendable database ecosystem. Always consider the following best practices:
+System Selection: Always verify whether you need UK (Snowflake direct) or US (Superset) data access
+VPN Requirements: Use the appropriate VPN (UK or US) based on the data being accessed
+Table Selection: Prefer MRT_ layer tables for reporting; use INT_ or STG_ only when needed
+Test Account Exclusion: Always filter out test accounts using the appropriate method
+Performance Optimization: Filter large tables before joining; start with smaller tables
+Date Filtering: Apply date filters to large transaction tables before joining
+Cross-Product Analysis: Use the appropriate linking fields (hashed identifiers or cross-product base)
+Schema Syntax: Note the syntax differences between Snowflake and Superset queries
+Appendix C: Enhanced Data Dictionary
+Table of Contents
+Cards Product Tables
+Loans Product Tables
+Motor Finance Tables
+Open Banking Tables
+Marketing and Growth Tables
+US Operations Tables
+Common Identifiers and Relationships
+Status and State Values
+Common Flags and Indicators
+1. Cards Product Tables
+1.1 MRT__APPLICATIONS__CARDS (180M rows)
+Description: Tracks the application process for Cards products. Key Fields:
+APPLICATION_ID: Primary identifier for the application
+STATE: Current application state
+CREATED_AT: Application submission timestamp
+CREDIT_LIMIT: Approved credit limit
+IS_OB_INCOME_VERIFIED: (Boolean) Open Banking income verification flag
+IP_ADDRESS: Applicant's IP address
+ADDRESS_CHANGED: (Boolean) Address change indicator
+GEMINI_SCORE_RAW/GEMINI_SCORE_SCALED: Gemini model credit scores
+OVERLAY_SCORE_RAW/OVERLAY_SCORE_SCALED: Overlay model credit scores
+LYRA_SCORE_RAW/LYRA_SCORE_SCALED: Lyra model credit scores
+HINTON_SCORE_RAW/HINTON_SCORE_SCALED: Hinton model credit scores
+ARGUS_SCORE_RAW/ARGUS_SCORE_SCALED: Argus model credit scores
+LEVEL_MODEL_SCORE_RAW/LEVEL_MODEL_SCORE_SCALED: Level model credit scores
+Usage Notes:
+Contains the initial application data but not ongoing account information
+Use for application funnel analysis and conversion metrics
+Connect to MRT__ACCOUNTS__CARDS via APPLICATION_ID to track accepted applications
+1.2 MRT__ACCOUNTS__CARDS (1M rows)
+Description: Central repository for all Cards accounts. Key Fields:
+ACCOUNT_NUMBER: Unique identifier for the card account
+ACCOUNT_ID: Alternative ID format used across systems
+APPLICATION_ID: Links to the original application
+GIVEN_NAME_HASH/FAMILY_NAME_HASH/DATE_OF_BIRTH_HASH/MOBILE_NUMBER_HASH/EMAIL_HASH: Hashed personal identifiers
+OPENED_AT: Timestamp of account opening
+DATE_SOLD: When applicable, date account was sold
+STATE: Current account state (e.g., 'active', 'closed')
+CLOSED_AT: Timestamp of account closure
+PAYING_DOWN_STARTED_AT: When the account entered paying down status
+INITIAL_CREDIT_LIMIT: Starting credit limit in currency units
+INITIAL_APR: Initial Annual Percentage Rate
+CREDIT_AGREEMENT_ACCEPTED_AT: When customer accepted terms
+CREDIT_AGREEMENT_VERSION: Version of agreement accepted
+ADDRESS_*_HASH: Various hashed address components
+POST_CODE_REGION: Region derived from postal code
+NUTS_1_CLASSIFICATION: Standard geographic classification
+NET_MONTHLY_INCOME_AMOUNT: Declared monthly income
+NET_MONTHLY_INCOME_SOURCE: Source of income data
+APPLICATION_DECLARED_INCOME: Income stated during application
+APPLICATION_DECISION_INCOME: Income used for decision
+DECISION_INCOME_SOURCE: Source of decision income
+SOURCE: Customer acquisition channel
+FLAG_OB_PA_QUOTE/FLAG_OB_NPA_QUOTE: Open Banking flags
+INSTANT_SPEND_ELIGIBLE: (Boolean) Eligibility for instant spending
+INSTANT_SPEND_STATUS: Status of instant spend capability
+ACTIVE_FRAUD_TAG: (Boolean) Indicates potential fraud
+ADDRESS_POST_CODE_HASH: Hashed postal code
+POST_CODE_REGION: Geographic region
+ADDRESS_LOCALITY_HASH: Hashed locality/city
+Usage Notes:
+This is the primary table for querying active card accounts
+Links to transactions via the ACCOUNT_ID field
+Use for portfolio analysis, customer base reports, and account status tracking
+Credit score fields contain both raw scores and scaled scores for different models
+1.3 MRT__TRANSACTIONS__CARDS (159M rows)
+Description: Contains individual purchase and payment transactions. Key Fields:
+TRANSACTION_ID: Primary identifier for the transaction
+ACCOUNT_ID: Links to the account (foreign key to MRT__ACCOUNTS__CARDS)
+TRANSACTION_DATE: Date the transaction occurred
+AMOUNT: Transaction amount (positive for purchases, negative for payments typically)
+TRANSACTION_TYPE: Type of transaction (e.g., PURCHASE, PAYMENT, BALANCE, INTEREST, FEE)
+MERCHANT_NAME: Name of the merchant
+MERCHANT_CATEGORY: Merchant category code or description
+MERCHANT_CITY: City where transaction occurred
+MERCHANT_COUNTRY: Country where transaction occurred
+Usage Notes:
+Very large table - always filter by date and/or account before querying
+Join to MRT__ACCOUNTS__CARDS on ACCOUNT_ID for account-level analysis
+Contains different transaction types including purchases, payments, fees, and interest charges
+Balance entries can be used to determine point-in-time balances
+1.4 MRT__CASHFLOW_EVENTS__CARDS (227M rows)
+Usage Notes:
+Similar to transactions but focuses on financial impacts to account balances
+Provides a different view of customer activity than transaction data
+Very large table - always filter by date and/or account before querying
+Complements transaction data for complete financial activity tracking
+1.5 MRT__MARQETA_WEBHOOK_EVENTS__CARDS (404M rows)
+Description: Webhook events from the Marqeta card processing platform. Key Fields:
+EVENT_ID: Primary identifier for the event
+ACCOUNT_ID: Links to the account
+EVENT_TYPE: Type of webhook event
+EVENT_TIMESTAMP: When the event occurred
+MERCHANT_CITY: City where transaction occurred
+MERCHANT_COUNTRY: Country where transaction occurred
+EVENT_DATA: Additional event data
+WEBHOOK_SOURCE: Source of the webhook
+Usage Notes:
+Contains raw webhook data from the card processor
+Extremely large table - always filter aggressively
+Used for detailed operational analysis and troubleshooting
+Contains merchant data that may not be available in the transactions table
+2. Loans Product Tables
+2.1 MRT__LOANAPPLICATION_METADATA__LOANS (382M rows)
+Description: Tracks application lifecycle and metadata for Loans. Key Fields:
+APPLICATION_ID: Primary identifier for the application
+CREATED_AT: Application creation timestamp
+STATE: Current application state
+AMOUNT_REQUESTED: Requested loan amount
+TERM_REQUESTED: Requested loan term in months
+APPLICATION_CHANNEL: Application submission channel
+Usage Notes:
+Contains initial application data and status
+Very large table - always filter by dates or application IDs
+Join to MRT__LOANAPPLICATION_USERS__LOANS for applicant details
+Join to MRT__LOAN__LOANS for originated loans
+2.2 MRT__LOANAPPLICATION_USERS__LOANS (23M rows)
+Description: Contains applicant information for loans. Key Fields:
+APPLICATION_ID: Links to the loan application
+USER_ID: Applicant identifier
+EMAIL_HASH: Hashed email address
+MOBILE_HASH: Hashed mobile number
+DATE_OF_BIRTH_HASH: Hashed date of birth
+POSTCODE: Applicant's postal code
+DECLARED_INCOME: Self-reported income
+Usage Notes:
+Contains PII (personally identifiable information) in hashed form
+Used for identity resolution across products
+Contains geographic information for regional analysis
+Connect to MRT__LOANAPPLICATION_METADATA__LOANS via APPLICATION_ID
+2.3 MRT__LOAN__LOANS (1.3M rows)
+Description: Primary table for active and historical loans. Key Fields:
+LOAN_ID: Primary identifier for the loan
+APPLICATION_ID: Links to the original application
+CREATED_AT: When the loan was created
+AMOUNT: Principal loan amount
+TERM: Loan term in months
+APR: Annual Percentage Rate
+INTEREST_RATE: Interest rate percentage
+STATE: Current loan status
+ORIGINATION_FEE: Fee charged at origination
+MONTHLY_PAYMENT_AMOUNT: Contractual monthly payment
+OUTSTANDING_PRINCIPAL: Current outstanding principal
+NEXT_PAYMENT_DATE: Date of next scheduled payment
+MATURITY_DATE: Scheduled end date of the loan
+Usage Notes:
+Main table for loan portfolio analysis
+Contains both active and historical loans
+Join to MRT__REPAYMENT__LOANS for payment history
+State field indicates current status (active, paid off, defaulted, etc.)
+3. Motor Finance Tables
+3.1 hirepurchaseloan (31,000 rows)
+Description: Central entity for auto finance loans. Key Fields:
+id: Primary identifier
+reference: External reference number
+grossAmount: Total loan amount including fees
+netAmount: Principal loan amount excluding fees
+term: Loan term in months
+rate: Interest rate
+apr: Annual Percentage Rate
+monthlyPayment: Contractual monthly payment amount
+principalOutstanding: Current outstanding principal
+pd: Probability of Default score
+state: Loan status (e.g., "Good Standing", "Late", "Complete", "Cancelled")
+originationDate: When the loan was originated
+disbursalDate: When funds were disbursed
+endDate: Scheduled end date
+defaultDate: When loan entered default (if applicable)
+terminationDate: When loan was terminated (if applicable)
+chargeOffDate: When loan was charged off (if applicable)
+application_id: Links to hirepurchaseloanapplication
+quote_id: Links to hirepurchasequote
+user_id: Links to customer data
+account_id: Links to account table
+vehicle_id: Links to vehicle table
+loanProduct_id: Links to product configuration
+Usage Notes:
+This is the primary table for Motor Finance loans in the PostgreSQL system
+Not directly accessible in Snowflake - summary data available in MRT_MOTOR schema
+Contains the full lifecycle of auto finance loans
+Connects to multiple related tables for vehicle, customer, and payment information
+3.2 vehicle
+Description: Tracks details of the financed vehicles. Key Fields:
+id: Primary identifier
+make: Vehicle manufacturer
+model: Vehicle model
+type: Vehicle type/body style
+mileage: Recorded mileage
+vrm: Vehicle Registration Mark (license plate)
+vin: Vehicle Identification Number
+glassVehicle_id: Link to Glass's Guide valuation
+assumedAnnualMileage: Expected annual usage
+Usage Notes:
+Contains core vehicle information for Motor Finance loans
+Links to hirepurchaseloan via vehicle_id
+Connected to valuation services through bregovehicle, glassvehicle
+Used for collateral valuation and risk assessment
+4. Open Banking Tables
+4.1 MRT__ACCOUNTS__OPENBANKING (422K rows)
+Description: Contains customer bank account information from Open Banking. Key Fields:
+OB_ACCOUNT_ID: Primary identifier for the OB account
+CUSTOMER_ID: Links to the customer
+INSTITUTION_ID: Financial institution identifier
+ACCOUNT_TYPE: Type of bank account
+ACCOUNT_SUBTYPE: Subtype/category of account
+CURRENCY: Account currency
+INSTITUTION_NAME: Name of the financial institution
+CONSENT_ID: ID of customer consent record
+CREATED_AT: When the account was first added
+LAST_UPDATED: Last update timestamp
+Usage Notes:
+Contains customer-linked bank account information
+Used for income verification and affordability assessment
+Links to transactions table via OB_ACCOUNT_ID
+Join to cross-product base for customer linkage
+4.2 MRT__TRANSACTIONS__OPENBANKING (27.7B rows)
+Description: Bank transaction data from Open Banking. Key Fields:
+TRANSACTION_ID: Primary identifier for the transaction
+OB_ACCOUNT_ID: Links to the Open Banking account
+TRANSACTION_DATE: Date of the transaction
+AMOUNT: Transaction amount
+DESCRIPTION: Transaction description
+TRANSACTION_CATEGORY: Categorized transaction type
+MERCHANT_NAME: Identified merchant
+IS_CREDIT: Boolean flag for credit transactions
+RUNNING_BALANCE: Account balance after transaction
+Usage Notes:
+Extremely large table - always use aggressive filtering
+Contains detailed financial transaction data from customer bank accounts
+Used for income verification, spending analysis, and affordability
+Join to accounts table via OB_ACCOUNT_ID
+5. Marketing and Growth Tables
+5.1 MRT__USER_PROPERTIES__GOOGLE_ANALYTICS (419M rows)
+Description: User property data from Google Analytics. Key Fields:
+SESSION_ID: Session identifier
+USER_ID: User identifier
+EVENT_DATE: Date of the event
+PROPERTY_NAME: Name of the user property
+PROPERTY_VALUE: Value of the user property
+DEVICE_CATEGORY: Device type
+SOURCE: Traffic source
+MEDIUM: Traffic medium
+CAMPAIGN: Campaign identifier
+Usage Notes:
+Very large table - filter by date and property for performance
+Used for marketing attribution and user behavior analysis
+Contains user properties from website and app interactions
+Can be joined to events table for detailed user journey analysis
+5.2 MRT__EVENTS__GOOGLE_ANALYTICS (419M rows)
+Description: Event data from Google Analytics. Key Fields:
+EVENT_ID: Primary identifier for the event
+SESSION_ID: Session identifier
+USER_ID: User identifier
+EVENT_DATE: Date of the event
+EVENT_NAME: Name of the event
+EVENT_VALUE: Value associated with the event
+DEVICE_CATEGORY: Device type
+SOURCE: Traffic source
+MEDIUM: Traffic medium
+CAMPAIGN: Campaign identifier
+Usage Notes:
+Very large table - always filter by date and event type
+Used for funnel analysis and conversion tracking
+Contains detailed user interaction events
+Join to user properties table for complete user context
+6. US Operations Tables
+6.1 MRT__CARDS_US__CARDS_ACCOUNTS (8,401 rows)
+Description: Main table for all US card accounts information. Key Fields:
+ACCOUNT_ID: Primary identifier
+ACCOUNT_NUMBER: Formatted account number
+EXTERNAL_ID: Links to Peach and Marqeta systems
+LOAN_ID: Internal loan ID in Peach
+FLAG_TEST_ACCOUNT: Identifies test accounts
+FLAG_FRIEND_FAMILY_ACCOUNT: Identifies employee/internal accounts
+OPENED_AT: Account opening date
+COHORT: Monthly cohort grouping
+COHORT_AGE_MONTHS: Age of account in months
+STATE: Current account status
+WAS_ONBOARDED: Indicates successful app installation and login
+BLOCKING_REASON: Reason for account blocks
+INITIAL_CREDIT_LIMIT: Initial approved credit limit
+INITIAL_APR: Initial Annual Percentage Rate
+ACCOUNT_CREDIT_LIMIT: Current credit limit
+ACCOUNT_APR: Current APR
+ASTRUM_SCORE: Proprietary risk model score
+VANTAGESCORE3: Third-party credit score
+APP_STATED_ANNUAL_INCOME: Self-reported annual income
+APP_STATED_MONTHLY_INCOME: Self-reported monthly income
+APP_ADDRESS_STATE: State of residence
+UTM_SOURCE: Marketing source
+Usage Notes:
+Primary table for US Cards portfolio analysis
+Similar to MRT__ACCOUNTS__CARDS in the UK system
+Used in Superset - requires US VPN access
+Critical to filter out test accounts using FLAG_TEST_ACCOUNT
+6.2 MRT__LOANS_US__LOAN_APPLICATION (2,265,715 rows)
+Description: Primary table for US loan applications and originations. Key Fields:
+PRIVATE_ID: Internal identifier
+UUID: Universal unique identifier
+EXTERNAL_ID: ID provided by introducers
+LOAN_UUID/LOAN_ID: Identifiers for originated loans
+CREATED_AT: Initial application creation
+QUOTED_AT: When offer was presented
+REQUIREMENTS_STARTED_AT: Started requirements collection
+REQUIREMENTS_SUBMITTED_AT: Completed initial requirements
+ORIGINATED_AT: When loan was originated
+DECLINED_AT: Application declined
+QUOTE_GROSS_AMOUNT: Offered loan amount
+QUOTE_TERM: Offered loan term in months
+QUOTE_APR: Offered Annual Percentage Rate
+ORIGINATED_AMOUNT: Final loan amount
+ORIGINATED_TERM: Final loan term
+VANTAGE_SCORE: Credit bureau score
+TAHOE_RAW/TAHOE_SCALED: Tahoe risk model scores
+YUKON_RAW/YUKON_SCALED: Yukon risk model scores
+NET_MONTHLY_INCOME: Verified monthly income
+DEBT_TO_INCOME_RATIO: DTI calculation
+PAYMENT_TO_INCOME_RATIO: PTI calculation
+APP_ADDRESS_STATE: State of residence
+FLAG_TEST_ACCOUNT: Identifies test accounts
+Usage Notes:
+Comprehensive table for US Loans product
+Contains the complete loan lifecycle from application to origination
+Large table - filter by date ranges and application status
+Always exclude test accounts using FLAG_TEST_ACCOUNT
+Used in Superset - requires US VPN access
+7. Common Identifiers and Relationships
+7.1 Customer Identifiers
+Description: How customers are identified across products. Key Fields:
+EMAIL_HASH: Hashed email address - most common cross-product identifier
+MOBILE_NUMBER_HASH/MOBILE_HASH: Hashed phone number
+DATE_OF_BIRTH_HASH: Hashed date of birth
+GIVEN_NAME_HASH/FAMILY_NAME_HASH: Hashed name components
+customer_id/CUSTOMER_ID: Different formats across systems
+user_id/USER_ID: Different formats across systems
+Usage Notes:
+Hashed identifiers allow cross-product customer identification
+MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING provides linkage across products
+Identifiers may be formatted differently across schemas
+Use hashed identifiers for privacy-compliant analysis
+7.2 Account/Product Identifiers
+Description: How accounts are identified within products. Key Fields:
+Cards UK: ACCOUNT_ID, ACCOUNT_NUMBER, APPLICATION_ID
+Loans UK: loan_id, LOAN_ID, application_id
+Motor Finance: id (in hirepurchaseloan), reference
+Cards US: ACCOUNT_ID, EXTERNAL_ID
+Loans US: LOAN_ID, EXTERNAL_ID
+Usage Notes:
+Different products use different identifier naming conventions
+When joining across product schemas, verify the identifier format
+Some identifiers are internal, others are used for external systems
+APPLICATION_ID often links applications to accounts/loans
+8. Status and State Values
+8.1 Cards Account States
+Description: Possible values for STATE field in MRT__ACCOUNTS__CARDS. Values:
+active: Account in good standing
+closed: Account has been closed
+delinquent_1_29: 1-29 days past due
+delinquent_30_59: 30-59 days past due
+delinquent_60_89: 60-89 days past due
+delinquent_90_plus: 90+ days past due
+charged_off: Account has been charged off
+paying_down: Account closed but customer paying down balance
+Usage Notes:
+Account state determines inclusion in various metrics
+Delinquency states indicate days past due buckets
+Use appropriate states when calculating active accounts vs delinquencies
+For point-in-time analysis, use historical tables or snapshots
+8.2 Loans States
+Description: Possible values for state field in MRT__LOAN__LOANS. Values:
+current: Loan in good standing
+past_due: Loan has missed payments
+default: Loan in default status
+paid_off: Loan has been fully repaid
+charge_off: Loan has been charged off
+cancelled: Loan was cancelled before disbursement
+settlement: Loan has been settled
+Usage Notes:
+Loan state determines inclusion in portfolio metrics
+"current" and "past_due" loans are considered active
+Use appropriate states when calculating active loans vs delinquencies
+For point-in-time status, use collections flags or daily snapshots
+8.3 Motor Finance States
+Description: Possible values for state field in hirepurchaseloan. Values:
+Good Standing: Loan in good standing (21,319 loans)
+Cancelled: Cancelled applications/agreements (3,531 loans)
+Complete: Successfully repaid loans (3,005 loans)
+Late: Accounts in arrears (2,025 loans)
+Disbursed: Recently funded loans (1,888 loans)
+Payment Plan: Accounts on payment arrangements (210 loans)
+Pending, Settled, Written Off: Less common statuses
+Usage Notes:
+Status naming conventions differ from Cards and Loans
+"Good Standing" and "Disbursed" are considered active
+"Late" loans are in collections/delinquency
+Numbers in parentheses indicate approximate counts as of documentation
+9. Common Flags and Indicators
+9.1 Test Account Flags
+Description: Flags used to identify test/non-production accounts. Key Fields:
+UK Cards: SOURCE = 'TEST' or check for test patterns in identifiers
+US Cards: FLAG_TEST_ACCOUNT = 1, FLAG_FRIEND_FAMILY_ACCOUNT = 1
+US Cards: Accounts in INT__CARDS_US__TEST_ACCOUNT table
+US Loans: FLAG_TEST_ACCOUNT = 1
+Usage Notes:
+Always exclude test accounts from business reporting
+Different products use different methods to identify test accounts
+Test account filtering is especially critical for US products
+For US Cards, use BOTH the flag AND the test account table
+9.2 Open Banking Flags
+Description: Flags related to Open Banking functionality. Key Fields:
+IS_OB_INCOME_VERIFIED: Income verified through Open Banking
+IS_OB_PREAPPROVAL: Pre-approval through Open Banking
+IS_OB_EXPANSION: Credit limit expansion using Open Banking
+FLAG_OB_PA_QUOTE, FLAG_OB_NPA_QUOTE: Open Banking quote flags
+Usage Notes:
+Used to identify accounts/applications that used Open Banking
+Important for segmentation and performance analysis
+May indicate different decision paths or verification methods
+Used across multiple product schemas
+9.3 Risk Exclusion Flags (US Products)
+Description: Flags for risk management exclusions in US products. Key Fields:
+FLAG_HP_EXCLUSIONS: High-priority exclusions
+FLAG_MARCH_RISK_EXCLUSIONS: Risk exclusions from March update
+FLAG_PLAID_EXCLUSIONS: Exclusions based on Plaid data
+FLAG_DTI_EXCLUSIONS: Debt-to-income ratio exclusions
+FLAG_PTI_EXCLUSIONS: Payment-to-income ratio exclusions
+FLAG_EXCLUSIONS_2023: 2023 risk policy exclusions
+FLAG_EXCLUSIONS_202401: January 2024 risk policy exclusions
+Usage Notes:
+Used primarily in US Loans data
+Applications/loans with these flags should be excluded from certain analyses
+Different flags represent different risk policy changes
+Multiple flags may apply to a single record
+Always document which exclusion flags were applied in analysis
+Appendix D: System-Specific Instructions for Database Queries
+This guide provides clear instructions on how to differentiate between UK (Snowflake) and US (Superset) database systems, including syntax differences, access requirements, and system-specific considerations.
+Quick Reference Guide
+Characteristic
+UK System
+US System
+Primary Platform
+Snowflake web interface
+Superset analytics platform
+VPN Requirement
+UK VPN
+US VPN
+Schema Naming
+MRT_CARDS, MRT_LOANS, etc.
+MRT_CARDS_US, MRT_LOANS_US, etc.
+Table Prefixes
+MRT__, INT__, STG__
+MRT__, INT__ (same pattern)
+Column Naming
+Mixed case (camelCase or UPPER_CASE)
+Typically UPPER_CASE with quotes
+SQL Syntax
+Standard Snowflake SQL
+Standard SQL with quoted identifiers
+Test Account Exclusion
+Source filters or patterns
+FLAG_TEST_ACCOUNT flags
+Access Instructions
+Direct Snowflake login
+Select schema in Superset first
+
+1. Identifying the Correct System
+1.1 When to Use UK System (Snowflake)
+Use the UK system (Snowflake) when:
+The query focuses on UK customers or products
+The request mentions Snowflake specifically
+Tables referenced are in schemas without "_US" suffix (MRT_CARDS, MRT_LOANS, etc.)
+The query involves Motor Finance data in detail (main source in UK system)
+Reference to UK-specific operations, marketing channels, or UK geographic regions
+1.2 When to Use US System (Superset)
+Use the US system (Superset) when:
+The query focuses on US customers or products
+The request mentions Superset specifically
+Tables referenced are in schemas with "_US" suffix (MRT_CARDS_US, MRT_LOANS_US, etc.)
+Reference to US partner banks (Cross River Bank, Continental Bank)
+Reference to US marketing partners (Credit Karma, Credible, NerdWallet, etc.)
+Reference to US geographic regions (states)
+Reference to US-specific credit models (Yukon, Tahoe, Astrum)
+1.3 When Both Systems May Be Needed
+Some analyses may require data from both systems:
+Global customer or portfolio metrics that span both regions
+Comparison of performance between UK and US products
+Cross-region marketing performance analysis
+Executive-level reporting that consolidates global metrics
+In these cases, separate queries must be run in each system and results manually combined. There is no direct cross-system querying capability.
+2. Snowflake System (UK) Query Patterns
+2.1 Database and Schema Structure
+The UK Snowflake environment uses this hierarchy:
+Databases: PROD, RAW_PRODUCTION, RAW_MISC
+Schemas: MRT_CARDS, MRT_LOANS, MRT_OPENBANKING, MRT_GROWTH, MRT_MOTOR
+Tables: Tables with prefixes indicating layer (MRT__, INT__, STG__)
+2.2 SQL Syntax Examples
+Basic Query Structure
+sql
+Copy
+-- UK System (Snowflake) syntax
+SELECT
+  a.ACCOUNT_ID,
+  a.OPENED_AT,
+  a.INITIAL_CREDIT_LIMIT
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+WHERE
+  a.OPENED_AT > '2024-01-01'
+  AND a.STATE = 'active';
+Joining Tables
+sql
+Copy
+-- UK System (Snowflake) joining syntax
+SELECT
+  a.ACCOUNT_ID,
+  a.OPENED_AT,
+  a.INITIAL_CREDIT_LIMIT,
+  COUNT(t.transaction_id) AS transaction_count
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS a
+LEFT JOIN
+  PROD.MRT_CARDS.MRT__TRANSACTIONS__CARDS t
+  ON a.ACCOUNT_ID = t.ACCOUNT_ID
+WHERE
+  a.OPENED_AT > '2024-01-01'
+  AND t.transaction_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY
+  a.ACCOUNT_ID, a.OPENED_AT, a.INITIAL_CREDIT_LIMIT;
+Test Account Exclusion
+sql
+Copy
+-- UK System (Snowflake) test account exclusion
+SELECT
+  COUNT(*) AS active_accounts
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE
+  STATE = 'active'
+  AND (SOURCE != 'TEST' OR SOURCE IS NULL) -- Exclude test accounts
+  AND OPENED_AT > '2024-01-01';
+2.3 Snowflake-Specific Features
+Database context: Database name must be specified (PROD, RAW_PRODUCTION, etc.)
+Schema context: Schema must be specified (MRT_CARDS, MRT_LOANS, etc.)
+Object navigation: Database → Schema → Table hierarchy
+Table metadata: Use SHOW and DESCRIBE commands to explore objects
+Optimizer: Filter large tables before joining to optimize performance
+Date functions: Use DATE_TRUNC for date truncation, DATEADD for date arithmetic
+3. Superset System (US) Query Patterns
+3.1 Database and Schema Structure
+The US Superset environment accesses this hierarchy:
+Database: PROD (selected in Superset connection)
+Schemas: MRT_CARDS_US, MRT_LOANS_US, INT_CARDS_US (selected in dropdown)
+Tables: Tables with similar naming pattern as UK (MRT__, INT__, STG__)
+3.2 SQL Syntax Examples
+Basic Query Structure
+sql
+Copy
+-- US System (Superset) syntax
+SELECT
+  "ACCOUNT_ID",
+  "OPENED_AT",
+  "INITIAL_CREDIT_LIMIT"
+FROM
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE
+  "OPENED_AT" > '2024-01-01'
+  AND "STATE" = 'active'
+  AND "FLAG_TEST_ACCOUNT" = 0; -- Always exclude test accounts
+Joining Tables
+sql
+Copy
+-- US System (Superset) joining syntax
+SELECT
+  a."ACCOUNT_ID",
+  a."OPENED_AT",
+  a."INITIAL_CREDIT_LIMIT",
+  COUNT(d."EXTERNAL_ID") AS days_with_balance
+FROM
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS" a
+LEFT JOIN
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT" d
+  ON a."EXTERNAL_ID" = d."EXTERNAL_ID"
+WHERE
+  a."OPENED_AT" > '2024-01-01'
+  AND a."FLAG_TEST_ACCOUNT" = 0
+  AND d."day" BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY
+  a."ACCOUNT_ID", a."OPENED_AT", a."INITIAL_CREDIT_LIMIT";
+Test Account Exclusion
+sql
+Copy
+-- US System (Superset) test account exclusion - CRITICAL
+SELECT
+  COUNT(*) AS active_accounts
+FROM
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE
+  "STATE" = 'active'
+  AND "FLAG_TEST_ACCOUNT" = 0 -- Required flag exclusion
+  AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0 -- Exclude employee accounts
+  AND "EXTERNAL_ID" NOT IN ( -- Additional test account exclusion
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+  AND "OPENED_AT" > '2024-01-01';
+3.3 Superset-Specific Requirements
+Schema selection: Must first select the appropriate schema from the dropdown menu
+Table selection: After schema selection, tables become available to query
+Quoted identifiers: Column names require double quotes when they contain capital letters
+Test account exclusion: Critical to exclude test accounts using multiple methods
+Limited direct object exploration: Less metadata available than in Snowflake
+Date handling: Similar date functions but may have slight syntax differences
+4. Key Syntax Differences
+4.1 Object References
+UK (Snowflake):
+sql
+Copy
+SELECT * FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+US (Superset):
+sql
+Copy
+SELECT * FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS";
+Key Differences:
+US system uses double quotes around database, schema, and table names
+US schema names include "_US" suffix
+US table names may include "_US" in the name as well
+4.2 Column References
+UK (Snowflake):
+sql
+Copy
+SELECT ACCOUNT_ID, OPENED_AT, STATE FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+US (Superset):
+sql
+Copy
+SELECT "ACCOUNT_ID", "OPENED_AT", "STATE" FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS";
+Key Differences:
+US system uses double quotes around column names
+Both systems may have uppercase column names
+Quoting is especially important in US system when column names have capital letters
+4.3 Date Functions
+UK (Snowflake):
+sql
+Copy
+SELECT DATE_TRUNC('month', OPENED_AT) AS month FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+US (Superset):
+sql
+Copy
+SELECT DATE_TRUNC('month', "OPENED_AT") AS month FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS";
+Key Differences:
+Date functions generally work similarly
+Column name quoting rules still apply to date fields
+Both systems support standard date functions like DATE_TRUNC, DATEADD, DATEDIFF
+4.4 Test Account Exclusion
+UK (Snowflake):
+sql
+Copy
+WHERE (SOURCE != 'TEST' OR SOURCE IS NULL)
+US (Superset):
+sql
+Copy
+WHERE "FLAG_TEST_ACCOUNT" = 0
+  AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0
+  AND "EXTERNAL_ID" NOT IN (
+    SELECT "EXTERNAL_ID"
+    FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+  )
+Key Differences:
+US system requires more explicit test account exclusion
+US exclusion uses multiple flags and reference tables
+UK exclusion generally relies on SOURCE field or patterns
+Test account exclusion is critical for accurate reporting in US system
+5. Special VPN Considerations
+5.1 UK VPN Requirements
+UK VPN must be active to access the Snowflake environment
+Without UK VPN, Snowflake connection will fail
+UK VPN gives access to UK-specific internal resources
+5.2 US VPN Requirements
+US VPN must be active to access the Superset environment
+Without US VPN, Superset connection will fail
+US VPN gives access to US-specific internal resources
+5.3 Switching Between Environments
+Only one VPN can typically be active at a time
+To switch environments, disconnect from current VPN and connect to the other
+Maintain separate query files/tabs for UK and US analysis
+For global reporting, run separate queries and combine results manually
+6. Best Practices for System-Specific Queries
+6.1 Query Development Best Practices
+Always identify the correct system (UK or US) before writing queries
+Use system-appropriate syntax for the target environment
+Document which system was used for the analysis
+For reusable queries, clearly mark which system they're designed for
+Test account exclusion should always be applied, especially in US system
+Filter large tables by date range before joining to improve performance
+6.2 Cross-System Analysis
+Run separate queries in each system for the same metric
+Use consistent date ranges and filtering logic
+Export results from both systems
+Combine results manually or in reporting tool
+Clearly document data sources in final output
+Be aware of timezone differences between systems
+6.3 Error Resolution
+Common UK System Errors:
+Object not found: Check database and schema names
+Permission denied: Verify access to the specific object
+Resources exceeded: Query may need optimization
+Common US System Errors:
+Schema not found: Ensure correct schema is selected in dropdown
+Column not found: Check for correct quoting of column names
+Column ambiguous: Fully qualify column names with table aliases
+Test data in results: Add explicit test account exclusions
+7. Additional Resources
+7.1 Finding Available Tables
+UK System (Snowflake):
+sql
+Copy
+-- List all schemas in the PROD database
+SHOW SCHEMAS IN DATABASE PROD;
+
+-- List all tables in the MRT_CARDS schema
+SHOW TABLES IN SCHEMA PROD.MRT_CARDS;
+US System (Superset):
+sql
+Copy
+-- List tables in the selected schema (must select schema first)
+SELECT table_name
+FROM "PROD"."INFORMATION_SCHEMA"."TABLES"
+WHERE table_schema = 'MRT_CARDS_US';
+7.2 Exploring Table Structure
+UK System (Snowflake):
+sql
+Copy
+-- View column definitions for a table
+DESCRIBE TABLE PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+US System (Superset):
+sql
+Copy
+-- Get column information for a table
+SELECT
+  column_name,
+  data_type,
+  is_nullable
+FROM "PROD"."INFORMATION_SCHEMA"."COLUMNS"
+WHERE table_schema = 'MRT_CARDS_US'
+  AND table_name = 'MRT__CARDS_US__CARDS_ACCOUNTS';
+7.3 Row Count Estimates
+UK System (Snowflake):
+sql
+Copy
+-- Get row counts for key tables
+SELECT
+  'MRT__ACCOUNTS__CARDS' AS table_name,
+  COUNT(*) AS row_count
+FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS;
+US System (Superset):
+sql
+Copy
+-- Get row counts for key tables
+SELECT
+  'MRT__CARDS_US__CARDS_ACCOUNTS' AS table_name,
+  COUNT(*) AS row_count
+FROM "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE "FLAG_TEST_ACCOUNT" = 0; -- Remember to exclude test accounts
+8. Decision Trees for System Selection
+8.1 Based on Geographic Region
+Query Focus:
+UK customers or markets → Use UK System (Snowflake)
+US customers or markets → Use US System (Superset)
+Global/cross-region analysis → Use both systems separately
+8.2 Based on Product
+Product Focus:
+UK Cards → Use UK System (Snowflake) with MRT_CARDS schema
+UK Loans → Use UK System (Snowflake) with MRT_LOANS schema
+UK Motor Finance → Use UK System (Snowflake) with MRT_MOTOR schema
+US Cards → Use US System (Superset) with MRT_CARDS_US schema
+US Loans → Use US System (Superset) with MRT_LOANS_US schema
+8.3 Based on Table/Schema Names
+Table/Schema Reference:
+Tables in MRT_CARDS, MRT_LOANS (no _US suffix) → Use UK System (Snowflake)
+Tables in MRT_CARDS_US, MRT_LOANS_US → Use US System (Superset)
+References to "PROD"."MRT_CARDS_US" → Use US System (Superset)
+References to PROD.MRT_CARDS → Use UK System (Snowflake)
+9. Common Query Templates
+9.1 Basic Account Query Templates
+UK Cards Account Query (Snowflake):
+sql
+Copy
+SELECT
+  ACCOUNT_ID,
+  OPENED_AT,
+  STATE,
+  INITIAL_CREDIT_LIMIT
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE
+  OPENED_AT BETWEEN '2024-01-01' AND '2024-12-31'
+  AND (SOURCE != 'TEST' OR SOURCE IS NULL);
+US Cards Account Query (Superset):
+sql
+Copy
+SELECT
+  "ACCOUNT_ID",
+  "OPENED_AT",
+  "STATE",
+  "INITIAL_CREDIT_LIMIT"
+FROM
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE
+  "OPENED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+  AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0;
+9.2 Basic Aggregation Templates
+UK Cards Monthly Origination (Snowflake):
+sql
+Copy
+SELECT
+  DATE_TRUNC('month', OPENED_AT) AS month,
+  COUNT(*) AS new_accounts,
+  SUM(INITIAL_CREDIT_LIMIT) AS total_credit_limit
+FROM
+  PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+WHERE
+  OPENED_AT BETWEEN '2024-01-01' AND '2024-12-31'
+  AND (SOURCE != 'TEST' OR SOURCE IS NULL)
+GROUP BY
+  DATE_TRUNC('month', OPENED_AT)
+ORDER BY
+  month;
+US Cards Monthly Origination (Superset):
+sql
+Copy
+SELECT
+  DATE_TRUNC('month', "OPENED_AT") AS month,
+  COUNT(*) AS new_accounts,
+  SUM("INITIAL_CREDIT_LIMIT") AS total_credit_limit
+FROM
+  "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+WHERE
+  "OPENED_AT" BETWEEN '2024-01-01' AND '2024-12-31'
+  AND "FLAG_TEST_ACCOUNT" = 0
+  AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0
+GROUP BY
+  DATE_TRUNC('month', "OPENED_AT")
+ORDER BY
+  month;
+These query templates provide a starting point for system-specific queries. Always adapt them to the specific business question and ensure proper test account exclusion, especially in the US system.
+Appendix E: Database Architecture Diagram
+Copy
+flowchart TB
+
+subgraph "Data Sources"
+  ds1["Customer Applications"]
+  ds2["Transaction Systems"]
+  ds3["Partner APIs"]
+  ds4["Marketing Platforms"]
+  ds5["Open Banking"]
+  ds6["Credit Bureaus"]
+end
+
+subgraph "ETL Processes"
+  etl1["Fivetran"]
+  etl2["dbt Transformations"]
+end
+
+subgraph "UK Environment (Snowflake)"
+  subgraph "Raw Layer"
+    uk_raw1["RAW_PRODUCTION
+    • CARDS_UK_*
+    • LOANS_UK_*
+    • LOANS_AND_MOTORS_UK_*"]
+    uk_raw2["RAW_MISC
+    • Various Supporting Datasets"]
+  end
+  
+  subgraph "Transformation Layers"
+    uk_stg["STG_ Layer
+    • Minimal Transformation
+    • Source-Aligned"]
+    uk_int["INT_ Layer
+    • Business Rules Applied
+    • Combined Sources"]
+    uk_mrt["MRT_ Layer
+    • Reporting-Ready
+    • Business Entities"]
+    uk_prs["PRS_ Layer
+    • Business-Specific Views
+    • Pre-calculated Metrics"]
+    
+    uk_stg --> uk_int
+    uk_int --> uk_mrt
+    uk_mrt --> uk_prs
+  end
+  
+  subgraph "Product Schemas"
+    uk_cards["MRT_CARDS
+    • MRT__ACCOUNTS__CARDS (1M)
+    • MRT__APPLICATIONS__CARDS (180M)
+    • MRT__TRANSACTIONS__CARDS (159M)"]
+    uk_loans["MRT_LOANS
+    • MRT__LOAN__LOANS (1.3M)
+    • MRT__LOANAPPLICATION_METADATA__LOANS (382M)
+    • MRT__REPAYMENT__LOANS (26M)"]
+    uk_ob["MRT_OPENBANKING
+    • MRT__TRANSACTIONS__OPENBANKING (27.7B)
+    • MRT__ACCOUNTS__OPENBANKING (422K)
+    • MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING (226K)"]
+    uk_growth["MRT_GROWTH
+    • MRT__EVENTS__GOOGLE_ANALYTICS (419M)
+    • MRT__SESSION_LOANS_REPORTING__GROWTH (581M)"]
+    uk_motor["MRT_MOTOR
+    • Summarized Motor Finance data
+    • Synced from PostgreSQL"]
+  end
+  
+  uk_raw1 --> uk_stg
+  uk_raw2 --> uk_stg
+  uk_mrt --> uk_cards
+  uk_mrt --> uk_loans
+  uk_mrt --> uk_ob
+  uk_mrt --> uk_growth
+  uk_mrt --> uk_motor
+end
+
+subgraph "Motor Finance (PostgreSQL)"
+  mf_app["hirepurchaseloanapplication
+  Applications & Quotes"]
+  mf_loan["hirepurchaseloan (31K)
+  Loan Accounts & Terms"]
+  mf_vehicle["vehicle
+  Vehicle Details"]
+  mf_repayment["repayment
+  Payment History"]
+  mf_collections["hirepurchasedailyarrearsbalance
+  Collections Status"]
+  
+  mf_app --> mf_loan
+  mf_vehicle --> mf_loan
+  mf_loan --> mf_repayment
+  mf_loan --> mf_collections
+end
+
+subgraph "US Environment (Superset/Snowflake)"
+  subgraph "US Product Schemas"
+    us_cards["MRT_CARDS_US
+    • MRT__CARDS_US__CARDS_ACCOUNTS (8.4K)
+    • MRT__CARDS_US__CARDS_APPLICATION (57K)
+    • MRT__CARDS_US__DAILY_AUM_PER_ACCOUNT (565K)"]
+    us_loans["MRT_LOANS_US
+    • MRT__LOANS_US__LOAN_APPLICATION (2.3M)
+    • MRT__PEACH__LOAN_STATUS_SNAPSHOTS (6M)
+    • MRT__FUNNEL_DAILY (738K)"]
+    us_int["INT_CARDS_US
+    • INT__CARDS_US__TEST_ACCOUNT
+    • Integration Tables"]
+  end
+  
+  us_peach["Peach Banking Platform
+  • Core Banking System
+  • Daily Snapshots
+  • Statements"]
+  us_ob["Plaid Integration
+  • Bank Account Data
+  • Transactions"]
+  
+  us_peach --> us_cards
+  us_peach --> us_loans
+  us_ob --> us_cards
+  us_ob --> us_loans
+end
+
+ds1 --> etl1
+ds2 --> etl1
+ds3 --> etl1
+ds4 --> etl1
+ds5 --> etl1
+ds6 --> etl1
+
+etl1 --> uk_raw1
+etl1 --> uk_raw2
+etl1 --> us_cards
+etl1 --> us_loans
+
+etl2 --> uk_stg
+etl2 --> uk_int
+etl2 --> uk_mrt
+etl2 --> uk_prs
+etl2 --> us_cards
+etl2 --> us_loans
+
+mf_loan --> uk_motor
+
+subgraph "Access Methods"
+  access1["UK: Snowflake Direct Access
+  • Requires UK VPN
+  • Standard Snowflake SQL"]
+  access2["US: Superset Analytics
+  • Requires US VPN
+  • Schema Selection
+  • Quoted Identifiers"]
+  access3["Motor Finance: PostgreSQL
+  • Limited Direct Access
+  • Use MRT_MOTOR in Snowflake for reporting"]
+end
+
+uk_cards --> access1
+uk_loans --> access1
+uk_ob --> access1
+uk_growth --> access1
+uk_motor --> access1
+
+us_cards --> access2
+us_loans --> access2
+us_int --> access2
+
+mf_loan --> access3
+This diagram illustrates the complete Lendable database architecture, showing the relationships between systems, data flows, and access methods.
+
+Appendix F
+
+I'll refine the prompt based on your feedback, adding examples and a general approach for multi-product queries.
+Revised Prompt
+Copy
+# Lendable Database Query Assistant
+
+You are a specialized database query assistant with expertise in Lendable's data ecosystem. Your primary role is to translate business questions about Lendable into executable SQL queries, providing clear instructions on where and how to run them. You have access to the Lendable Database Architecture Technical Reference document which contains comprehensive information about Lendable's database structure.
+
+## How to Respond to User Questions
+
+For each user question:
+
+1. **Understand the Business Context**: 
+   - Interpret what business metric or insight the user is seeking
+   - Explain relevant business concepts in plain language (e.g., what "originations" or "delinquency rates" mean in Lendable's context)
+   - Reference the appropriate section of the Technical Reference document that relates to their question
+
+2. **Determine the Appropriate Data Source**:
+   - Identify whether the question requires UK data (Snowflake), US data (Superset), or both
+   - Specify which product data is needed (Loans, Cards, Motor Finance, Super App)
+   - Identify the specific schemas and tables required
+
+3. **Generate Multiple Query Options**:
+   - **Option 1: Simple Query** - A straightforward query for basic needs or users with limited SQL knowledge
+   - **Option 2: Advanced Query** - A more comprehensive query with additional fields, optimizations, or analytical components
+   - For cross-region questions, provide separate queries for UK and US data with instructions on how to combine results
+
+4. **Provide Clear Execution Instructions**:
+   - Specify the exact system where each query should be run
+   - Include VPN requirements (UK VPN for Snowflake, US VPN for Superset)
+   - Mention any schema selection requirements (especially for US data in Superset)
+   - Format the SQL query with proper syntax highlighting and indentation
+
+5. **Explain the Query Logic**:
+   - Walk through the query structure and logic in simple terms
+   - Explain key join conditions, filters, and calculations
+   - Highlight how the query addresses the specific business question
+
+6. **Include Best Practices**:
+   - Always exclude test accounts using the appropriate method for each system
+   - Recommend date filtering before joins for large tables
+   - Suggest appropriate indexing strategy for the query when relevant
+
+7. **Handle Multi-Product Queries**:
+   - For questions spanning multiple products (e.g., customers with both loans and cards), explain how to use hashed identifiers or the cross-product base table
+   - Clearly indicate when separate queries for different products must be run and manually combined
+   - Reference Section 4.1 of the Technical Reference document for details on cross-product customer identification
+
+8. **Request Clarification When Needed**:
+   - If a user's question is ambiguous or lacks necessary details, politely ask for clarification
+   - Suggest specific information that would help create a more accurate query
+   - Provide a preliminary query based on assumptions, clearly stating what assumptions were made
+
+## Response Format
+
+Structure your responses as follows:
+
+### Business Understanding
+[Explain the business context of the question, relevant metrics, and their importance to Lendable]
+[Reference relevant section(s) of the Technical Reference document: e.g., "See Section 3.1.2: Account Management for more details on card account data"]
+
+### Data Sources
+[Identify required databases, schemas, and key tables]
+[Explain which system(s) will be needed and why]
+
+### Query Option 1: Simple Approach
+```sql
+[Provide a simple, straightforward SQL query]
+Where to Run: [Specify system, VPN requirements, and any schema selection] Explanation: [Simple explanation of what the query does]
+Query Option 2: Advanced Approach
+sql
+Copy
+[Provide a more comprehensive SQL query with additional analytics or optimizations]
+Where to Run: [Specify system, VPN requirements, and any schema selection] Explanation: [Detailed explanation of the query structure, join logic, and how it answers the business question]
+Interpretation Guidance
+[Provide context on how to interpret the results] [Mention any limitations or considerations when analyzing the output]
+Adapt your explanations based on the apparent technical sophistication of the user's question. For technically simple questions, focus more on business context and simple explanations. For technically complex questions, you can include more advanced SQL concepts and optimizations.
+Example Queries and Responses
+Example 1: "What are our total monthly originations across all products?"
+Business Understanding
+Originations refer to newly created loans, credit card accounts, or motor finance agreements. This metric is a fundamental growth indicator at Lendable, tracking the volume of new business across all product lines. This data is critical for assessing company growth and is a key metric for investor reporting.
+Reference: See Section 5.2.1 of the Technical Reference document for sample queries related to originations by product, time period, and geography.
+Data Sources
+This query requires data from multiple systems:
+UK data: Snowflake (PROD database) with MRT_CARDS, MRT_LOANS, and MRT_MOTOR schemas
+US data: Superset with MRT_CARDS_US and MRT_LOANS_US schemas
+Query Option 1: Simple Approach - UK Only
+sql
+Copy
+-- UK Originations by Month and Product
+SELECT
+  DATE_TRUNC('month', COALESCE(c.OPENED_AT, l.created_at, m.loan_origination_date)) AS month,
+  CASE
+    WHEN c.ACCOUNT_ID IS NOT NULL THEN 'Cards'
+    WHEN l.loan_id IS NOT NULL THEN 'Loans'
+    WHEN m.loan_id IS NOT NULL THEN 'Motor Finance'
+    ELSE 'Unknown'
+  END AS product,
+  COUNT(*) AS origination_count,
+  SUM(COALESCE(c.INITIAL_CREDIT_LIMIT, l.amount, m.gross_amount, 0)) AS origination_amount
+FROM 
+  (SELECT ACCOUNT_ID, OPENED_AT, INITIAL_CREDIT_LIMIT FROM PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS WHERE (SOURCE != 'TEST' OR SOURCE IS NULL)) c
+FULL OUTER JOIN 
+  (SELECT loan_id, created_at, amount FROM PROD.MRT_LOANS.MRT__LOAN__LOANS) l ON 1=0
+FULL OUTER JOIN 
+  (SELECT loan_id, loan_origination_date, gross_amount FROM PROD.MRT_MOTOR.MRT__LOAN__MOTOR WHERE state != 'Cancelled') m ON 1=0
+WHERE 
+  COALESCE(c.OPENED_AT, l.created_at, m.loan_origination_date) >= DATE_TRUNC('month', DATEADD('month', -12, CURRENT_DATE()))
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+Where to Run: Snowflake system with UK VPN connection Explanation: This query combines data from UK Cards, Loans, and Motor Finance, grouping by month and product type. It uses FULL OUTER JOIN with 1=0 condition as a technique to union the results without actual joining. The query excludes test accounts and cancelled motor finance loans.
+Query Option 2: Advanced Approach - UK and US Combined
+For UK data (run in Snowflake with UK VPN):
+sql
+Copy
+-- UK Originations
+WITH uk_originations AS (
+  -- Cards originations
+  SELECT
+    DATE_TRUNC('month', OPENED_AT) AS month,
+    'UK Cards' AS product,
+    COUNT(*) AS origination_count,
+    SUM(INITIAL_CREDIT_LIMIT) AS origination_amount
+  FROM
+    PROD.MRT_CARDS.MRT__ACCOUNTS__CARDS
+  WHERE
+    OPENED_AT >= DATE_TRUNC('month', DATEADD('month', -12, CURRENT_DATE()))
+    AND (SOURCE != 'TEST' OR SOURCE IS NULL)
+  GROUP BY 1, 2
+  
+  UNION ALL
+  
+  -- Loans originations
+  SELECT
+    DATE_TRUNC('month', created_at) AS month,
+    'UK Loans' AS product,
+    COUNT(*) AS origination_count,
+    SUM(amount) AS origination_amount
+  FROM
+    PROD.MRT_LOANS.MRT__LOAN__LOANS
+  WHERE
+    created_at >= DATE_TRUNC('month', DATEADD('month', -12, CURRENT_DATE()))
+  GROUP BY 1, 2
+  
+  UNION ALL
+  
+  -- Motor Finance originations
+  SELECT
+    DATE_TRUNC('month', loan_origination_date) AS month,
+    'UK Motor Finance' AS product,
+    COUNT(*) AS origination_count,
+    SUM(gross_amount) AS origination_amount
+  FROM
+    PROD.MRT_MOTOR.MRT__LOAN__MOTOR
+  WHERE
+    state != 'Cancelled'
+    AND loan_origination_date >= DATE_TRUNC('month', DATEADD('month', -12, CURRENT_DATE()))
+  GROUP BY 1, 2
+)
+SELECT
+  month,
+  product,
+  origination_count,
+  origination_amount,
+  SUM(origination_count) OVER (PARTITION BY month) AS total_count_by_month,
+  SUM(origination_amount) OVER (PARTITION BY month) AS total_amount_by_month
+FROM
+  uk_originations
+ORDER BY
+  month DESC, product;
+For US data (run in Superset with US VPN):
+sql
+Copy
+-- US Originations
+WITH us_originations AS (
+  -- US Cards originations
+  SELECT
+    DATE_TRUNC('month', "OPENED_AT") AS month,
+    'US Cards' AS product,
+    COUNT(*) AS origination_count,
+    SUM("INITIAL_CREDIT_LIMIT") AS origination_amount
+  FROM
+    "PROD"."MRT_CARDS_US"."MRT__CARDS_US__CARDS_ACCOUNTS"
+  WHERE
+    "OPENED_AT" >= DATE_TRUNC('month', DATEADD('month', -12, CURRENT_DATE()))
+    AND "FLAG_TEST_ACCOUNT" = 0
+    AND "FLAG_FRIEND_FAMILY_ACCOUNT" = 0
+    AND "EXTERNAL_ID" NOT IN (
+      SELECT "EXTERNAL_ID"
+      FROM "PROD"."INT_CARDS_US"."INT__CARDS_US__TEST_ACCOUNT"
+    )
+  GROUP BY 1, 2
+  
+  UNION ALL
+  
+  -- US Loans originations
+  SELECT
+    DATE_TRUNC('month', "ORIGINATED_AT") AS month,
+    'US Loans' AS product,
+    COUNT(*) AS origination_count,
+    SUM("ORIGINATED_AMOUNT") AS origination_amount
+  FROM
+    "PROD"."MRT_LOANS_US"."MRT__LOANS_US__LOAN_APPLICATION"
+  WHERE
+    "ORIGINATED_AT" >= DATE_TRUNC('month', DATEADD('month', -12, CURRENT_DATE()))
+    AND "FLAG_TEST_ACCOUNT" = 0
+    AND ("FLAG_ORIGINATION_EXCLUDE" = 0 OR "FLAG_ORIGINATION_EXCLUDE" IS NULL)
+  GROUP BY 1, 2
+)
+SELECT
+  month,
+  product,
+  origination_count,
+  origination_amount,
+  SUM(origination_count) OVER (PARTITION BY month) AS total_count_by_month,
+  SUM(origination_amount) OVER (PARTITION BY month) AS total_amount_by_month
+FROM
+  us_originations
+ORDER BY
+  month DESC, product;
+Where to Run: Both queries need to be run separately - first in Snowflake (UK VPN), then in Superset (US VPN). Results would need to be manually combined, typically in a spreadsheet or reporting tool. Explanation: These queries provide more detailed origination data broken down by product and region. They use window functions to calculate totals by month while preserving product-level detail. The queries carefully exclude test accounts using system-appropriate methods. The results will show both count and monetary volume of originations.
+Interpretation Guidance
+When interpreting these results, note that:
+Currency values for UK and US are in their respective local currencies (£ and $)
+For a true global view, currency conversion would need to be applied
+The UK and US businesses launched at different times, so historical comparisons should account for this
+Month-to-month variations are normal in lending businesses due to seasonality
+Example 2: "What percentage of our customers have multiple products?"
+Business Understanding
+Customer cross-product adoption is a key metric for Lendable, especially with the recent launch of the Super App and the strategic focus on cross-selling. This metric helps measure the success of Lendable's third strategic pillar: "Retain customers in the SuperApp and cross-sell more products using data insights."
+Reference: See Section 4.1 of the Technical Reference document for details on customer identification across products, and Section 4.2 for cross-product customer journey analysis.
+Data Sources
+This query requires connecting customer data across product lines:
+UK data: Snowflake using MRT_CARDS, MRT_LOANS, and potentially MRT_OPENBANKING schemas
+The MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING table (226K rows) provides cross-product linkage
+Query Option 1: Simple Approach
+sql
+Copy
+-- UK multi-product customer percentage
+SELECT
+  COUNT(DISTINCT customer_id) AS total_customers,
+  COUNT(DISTINCT CASE WHEN product_count > 1 THEN customer_id END) AS multi_product_customers,
+  (COUNT(DISTINCT CASE WHEN product_count > 1 THEN customer_id END) / 
+   NULLIF(COUNT(DISTINCT customer_id), 0) * 100) AS multi_product_percentage
+FROM (
+  SELECT
+    customer_id,
+    COUNT(DISTINCT product_type) AS product_count
+  FROM
+    PROD.MRT_OPENBANKING.MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING
+  GROUP BY
+    customer_id
+) customer_products;
+Where to Run: Snowflake system with UK VPN connection Explanation: This query uses the cross-product base table to count distinct products per customer, then calculates what percentage of customers have more than one product.
+Query Option 2: Advanced Approach
+sql
+Copy
+-- UK multi-product customer analysis with product combinations
+WITH customer_product_count AS (
+  SELECT
+    customer_id,
+    COUNT(DISTINCT product_type) AS product_count,
+    STRING_AGG(DISTINCT product_type, '+' ORDER BY product_type) AS product_combination,
+    MIN(product_start_date) AS first_product_date,
+    MAX(product_start_date) AS latest_product_date,
+    DATEDIFF('day', MIN(product_start_date), MAX(product_start_date)) AS days_between_products
+  FROM
+    PROD.MRT_OPENBANKING.MRT__CANTOR_CROSS_PRODUCT_BASE__OPENBANKING
+  GROUP BY
+    customer_id
+)
+SELECT
+  product_count,
+  product_combination,
+  COUNT(*) AS customer_count,
+  (COUNT(*) / SUM(COUNT(*)) OVER() * 100) AS percentage,
+  AVG(days_between_products) AS avg_days_between_products
+FROM
+  customer_product_count
+GROUP BY
+  product_count, product_combination
+ORDER BY
+  product_count DESC, customer_count DESC;
+Where to Run: Snowflake system with UK VPN connection Explanation: This query provides a more detailed breakdown of multi-product customers, showing specific product combinations, their frequency, and the average time between product adoptions. This helps understand not just how many customers have multiple products, but which combinations are most common and how long it typically takes customers to adopt additional products.
+Interpretation Guidance
+When interpreting these results:
+The cross-product base table is the most reliable source for this analysis as it resolves identity across products
+This analysis is primarily for UK customers, as the cross-product infrastructure is more mature there
+The "product_combination" field in the advanced query shows which specific product combinations are most common, helping identify successful cross-sell paths
+"Days between products" helps understand the typical customer journey timeframe from first to subsequent products
+Copy
+
+Is this revised prompt closer to what you're looking for? Would you like me to make any additional changes?
+
+Glossary
+Product Terminology
+Cards: Credit card product offering revolving credit
+Loans: Personal loan product with fixed terms
+Motor Finance: Auto loans/hire purchase for vehicle financing
+Open Banking: Infrastructure for secure bank account data sharing
+Super App: Mobile application launched in 2024 integrating multiple products
+Database Environment Terminology
+Snowflake: Primary data warehouse for UK operations
+Superset: Analytics platform for US operations
+Redash/autolend.lendable: PostgreSQL system for Motor Finance
+PROD: Production database containing reporting-ready data
+RAW_PRODUCTION: Source system data with minimal transformation
+Data Layer Terminology
+STG_: Staging layer (source aligned, minimal transformation)
+INT_: Integration layer (combining sources, applying business rules)
+MRT_: Mart layer (reporting-ready data, business entities)
+PRS_: Presentation layer (business-specific views)
+Common Technical Terms
+ETL: Extract, Transform, Load - data integration process
+dbt: Data build tool - transformation framework
+Fivetran: ETL service indicated by _fivetran_deleted flags
+VPN: Virtual Private Network - required for system access
+CLI: Credit Limit Increase
+PSI: Population Stability Index - model monitoring metric
+DTI: Debt-to-Income ratio
+PTI: Payment-to-Income ratio
+AUM: Assets Under Management
+Third-Party Services
+Marqeta: Card processing platform
+Peach: Banking platform for US operations
+Experian/TransUnion/Equifax: Credit bureaus
+Alloy: Identity verification service
+Plaid: Financial account aggregation service
+The Work Number (TWN): Income verification service
+Brego/Glass's Guide: Vehicle valuation services
+

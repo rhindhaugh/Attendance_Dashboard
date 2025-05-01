@@ -151,6 +151,27 @@ def clean_key_card_data(df: pd.DataFrame) -> pd.DataFrame:
     
     return result
 
+def normalize_compliance_divisions(divisions):
+    """
+    Normalize compliance divisions - combining all compliance divisions into a single 'Compliance' value.
+    
+    Args:
+        divisions: Series containing division values
+        
+    Returns:
+        Series with normalized division values
+    """
+    if divisions is None:
+        return None
+        
+    # Replace any division containing 'Compliance' with just 'Compliance'
+    normalized = divisions.copy()
+    mask = normalized.str.contains('Compliance', na=False)
+    normalized.loc[mask] = 'Compliance'
+    
+    logger.info(f"Normalized {mask.sum()} compliance division entries")
+    return normalized
+
 def clean_employee_info(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
     """
     Clean and preprocess the employee information.
@@ -188,6 +209,10 @@ def clean_employee_info(df: pd.DataFrame, max_data_date=None) -> pd.DataFrame:
     for col in needed_columns:
         if col in df.columns:
             result[col] = df[col]
+            
+    # Normalize compliance divisions
+    if 'Division' in result.columns:
+        result['Division'] = normalize_compliance_divisions(result['Division'])
     
     # Clean up Working Status
     if 'Working Status' in result.columns:

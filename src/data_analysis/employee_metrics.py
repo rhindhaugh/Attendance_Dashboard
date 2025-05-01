@@ -1,5 +1,9 @@
 import pandas as pd
+import logging
 from .attendance_counts import calculate_mean_arrival_time
+
+# Set up logging
+logger = logging.getLogger("attendance_dashboard.employee_metrics")
 
 def calculate_individual_attendance(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate individual employee attendance metrics."""
@@ -302,3 +306,144 @@ def create_employee_summary(df: pd.DataFrame) -> pd.DataFrame:
     }
     
     return result_df.rename(columns=column_mapping)
+
+def get_daily_employee_attendance(df: pd.DataFrame, selected_date: pd.Timestamp) -> pd.DataFrame:
+    """
+    Get attendance data for all active London Hybrid Full-Time employees on a specific date.
+    
+    Args:
+        df: Combined dataframe with employee and attendance data
+        selected_date: The specific date to check attendance
+        
+    Returns:
+        DataFrame with London Hybrid Full-Time employee attendance and arrival times for the selected date
+    """
+    # Ensure df is a copy to avoid modifying the original
+    df = df.copy()
+    
+    # Ensure employee_id is numeric for consistent comparisons
+    if 'employee_id' in df.columns:
+        df['employee_id'] = pd.to_numeric(df['employee_id'], errors='coerce')
+    # Ensure selected_date is a pandas Timestamp
+    if not isinstance(selected_date, pd.Timestamp):
+        selected_date = pd.to_datetime(selected_date)
+    
+    # Get all LONDON HYBRID FULL-TIME employees who were active on the selected date
+    # Active = hired before or on selected date, and either still active or left after selected date
+    # Ensure ALL datetime and ID comparisons are safe by explicit conversion
+    
+    # Make sure selected_date is properly formatted
+    if not isinstance(selected_date, pd.Timestamp):
+        selected_date = pd.to_datetime(selected_date)
+    
+    # Convert date columns to datetime to ensure safe comparisons
+    # Use .copy() to prevent SettingWithCopyWarning
+    hire_dates = pd.to_datetime(df['Combined hire date'], errors='coerce')
+    last_days = df['Most recent day worked'].copy()
+    # Convert non-NaT values to datetime
+    mask = ~last_days.isna()
+    last_days.loc[mask] = pd.to_datetime(last_days.loc[mask], errors='coerce')
+    
+    # Start with date comparisons - ensure all types match for comparison
+    active_london_hybrid_ft_mask = (
+        (hire_dates <= selected_date) &
+        (
+            last_days.isna() |
+            (last_days >= selected_date)
+        ) &
+        (df['Location'].astype(str) == 'London UK') &  # London employees
+        (df['Working Status'].astype(str) == 'Hybrid')  # Hybrid working status
+    )
+    
+    # Add is_full_time check only if the column exists
+    if 'is_full_time' in df.columns:
+        active_london_hybrid_ft_mask = active_london_hybrid_ft_mask & (df['is_full_time'] == True)
+    else:
+        # If is_full_time column doesn't exist, assume all employees are full-time
+        print("Warning: is_full_time column not found. Assuming all employees are full-time.")
+    
+    # Get unique active London Hybrid Full-Time employees
+    # Get a copy of the filtered data to avoid SettingWithCopyWarning
+    active_employees = df[active_london_hybrid_ft_mask].drop_duplicates('employee_id')[
+        ['employee_id', 'Last name, First name', 'Working Status', 'Location', 'Division', 'Department']
+    ].copy()
+    
+    # Ensure employee_id is numeric in active_employees using .loc accessor - explicitly convert to float64
+    active_employees.loc[:, 'employee_id'] = pd.to_numeric(active_employees['employee_id'], errors='coerce').astype('float64')
+    
+    # Filter data for the selected date - ensure date formats match exactly
+    # Convert date_only to the same datetime format as selected_date for safe comparison
+    date_only_dt = pd.to_datetime(df['date_only'])
+    date_mask = date_only_dt == selected_date
+    
+    # Create an explicit copy to avoid SettingWithCopyWarning
+    date_data = df[date_mask].copy()
+    
+    # Ensure employee_id is numeric in date_data too - use proper .loc accessor and explicitly convert to float64
+    date_data.loc[:, 'employee_id'] = pd.to_numeric(date_data['employee_id'], errors='coerce').astype('float64')
+    
+    # For each active London employee, check if they attended on the selected date
+    attendance_data = []
+    
+    # Handle case where no employees match the criteria
+    if active_employees.empty:
+        return pd.DataFrame()  # Return empty DataFrame
+        
+    for _, employee in active_employees.iterrows():
+        emp_id = employee['employee_id']
+        
+        # Double-check that we're comparing the same types
+        # Both should be float64 at this point, but let's be extra careful
+        try:
+            # Use an equality mask instead of direct DataFrame filtering
+            # This avoids any potential issues with index types
+            emp_id_mask = date_data['employee_id'].astype('float64') == float(emp_id)
+            emp_date_data = date_data[emp_id_mask]
+            attended = not emp_date_data.empty
+        except (ValueError, TypeError):
+            # Fallback if there's any issue with type conversion
+            logger.warning(f"Type conversion issue with employee_id: {emp_id}, type: {type(emp_id)}")
+            # Try string comparison as absolute last resort
+            emp_id_str = str(emp_id).strip()
+            date_id_str = date_data['employee_id'].astype(str).str.strip()
+            emp_date_data = date_data[date_id_str == emp_id_str]
+            attended = not emp_date_data.empty
+        
+        # Get arrival time if attended
+        arrival_time = None
+        if attended:
+            try:
+                # Get the earliest scan for this employee on this date
+                earliest_scan = emp_date_data.sort_values('parsed_time').iloc[0]
+                
+                # Check if parsed_time is valid before formatting
+                if pd.notna(earliest_scan['parsed_time']):
+                    arrival_time = earliest_scan['parsed_time'].strftime('%H:%M')
+                else:
+                    arrival_time = "Unknown"
+            except Exception as e:
+                # Fallback if there's any error getting the arrival time
+                arrival_time = "Error"
+        
+        # Create attendance record
+        attendance_record = {
+            'employee_id': emp_id,
+            'Employee Name': employee['Last name, First name'],
+            'Working Status': employee['Working Status'],
+            'Location': employee['Location'],
+            'Division': employee['Division'],
+            'Department': employee['Department'],
+            'Attended': 'Yes' if attended else 'No',
+            'Arrival Time': arrival_time if attended else 'N/A'
+        }
+        
+        attendance_data.append(attendance_record)
+    
+    # Convert to DataFrame
+    result_df = pd.DataFrame(attendance_data)
+    
+    # Sort by attendance status (Yes first), then by Employee Name
+    if not result_df.empty:
+        result_df = result_df.sort_values(['Attended', 'Employee Name'], ascending=[False, True])
+    
+    return result_df
